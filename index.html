@@ -227,34 +227,71 @@
     z-index: 2;
   }
 
-  #hint-group .hint-ripple {
-    fill: var(--ink);
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: hint-ripple 2.1s cubic-bezier(0.15, 0, 0.3, 1) infinite;
-  }
-  #hint-group .hint-ripple:nth-child(2) { animation-delay: 0.7s; }
-  #hint-group .hint-ripple:nth-child(3) { animation-delay: 1.4s; }
+  /* One gesture per cycle, and a rest after it: a single ring opens, the
+     arrow sets off behind it, and then the mark is quiet for a beat. Three
+     ripples chasing each other read as urgency, which is the opposite of
+     what a child sitting down to write needs. The whole thing restarts when
+     the hint moves, so the tap lands as the stroke becomes the next one. */
+  #hint-group .hint-glow { fill: var(--ink); opacity: 0.15; }
+  #hint-group .hint-dot  { fill: var(--ink); opacity: 0.85; }
 
-  @keyframes hint-ripple {
-    0%   { transform: scale(1);   opacity: 0.3; }
-    80%  { opacity: 0; }
-    100% { transform: scale(3.2); opacity: 0; }
+  #hint-group .hint-ring {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 2;
+    opacity: 0;
   }
-
-  #hint-group .hint-glow  { fill: var(--ink); opacity: 0.18; }
-  #hint-group .hint-inner { fill: var(--ink); opacity: 0.28; }
-  #hint-group .hint-dot   { fill: var(--ink); opacity: 0.75; }
 
   #hint-group .hint-arrow line {
     stroke: var(--ink);
-    opacity: 0.85;
     stroke-width: 2.8;
     stroke-linecap: round;
   }
-  #hint-group .hint-arrow polygon {
-    fill: var(--ink);
-    opacity: 0.85;
+  #hint-group .hint-arrow polygon { fill: var(--ink); }
+  #hint-group .hint-arrow-glide { opacity: 0; }
+
+  #hint-group.is-live .hint-ring,
+  #hint-group.is-live .hint-dot,
+  #hint-group.is-live .hint-arrow-glide {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation-duration: 3.4s;
+    animation-iteration-count: infinite;
+  }
+  #hint-group.is-live .hint-ring  { animation-name: hint-ring;  animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
+  #hint-group.is-live .hint-dot   { animation-name: hint-tap;   animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1); }
+  #hint-group.is-live .hint-arrow-glide {
+    transform-box: view-box;
+    animation-name: hint-travel;
+    animation-timing-function: cubic-bezier(0.25, 0.7, 0.3, 1);
+  }
+
+  @keyframes hint-ring {
+    0%   { transform: scale(0.55); opacity: 0; }
+    10%  { opacity: 0.45; }
+    48%  { transform: scale(2.3);  opacity: 0; }
+    100% { transform: scale(2.3);  opacity: 0; }
+  }
+
+  @keyframes hint-tap {
+    0%        { transform: scale(1); }
+    7%        { transform: scale(1.4); }
+    26%, 100% { transform: scale(1); }
+  }
+
+  /* Inside the rotated group, so this travels along the stroke. */
+  @keyframes hint-travel {
+    0%   { transform: translateX(-3px); opacity: 0; }
+    16%  { opacity: 0.9; }
+    52%  { transform: translateX(8px); opacity: 0; }
+    100% { transform: translateX(8px); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #hint-group.is-live .hint-ring,
+    #hint-group.is-live .hint-dot,
+    #hint-group.is-live .hint-arrow-glide { animation: none; }
+    #hint-group .hint-arrow-glide { opacity: 0.9; }
   }
 
   /* ── Buttons ────────────────────────────────────────────── */
@@ -431,15 +468,16 @@
         <canvas id="canvas" width="280" height="280"></canvas>
         <svg id="stroke-hint" class="stroke-hint" width="280" height="280" viewBox="0 0 280 280" aria-hidden="true">
           <g id="hint-group" display="none">
-            <circle class="hint-ripple" r="10" />
-            <circle class="hint-ripple" r="10" />
-            <circle class="hint-ripple" r="10" />
-            <circle class="hint-glow" r="14" />
-            <circle class="hint-inner" r="8" />
-            <circle class="hint-dot" r="3.5" />
+            <circle class="hint-ring" r="9" />
+            <circle class="hint-glow" r="12" />
+            <circle class="hint-dot" r="4" />
+            <!-- The rotation lives on the outer group and the motion on the
+                 inner one, so a CSS transform never overwrites the aim. -->
             <g id="hint-arrow" class="hint-arrow">
-              <line x1="7" y1="0" x2="24" y2="0" />
-              <polygon points="21,-3 27,0 21,3" />
+              <g class="hint-arrow-glide">
+                <line x1="9" y1="0" x2="22" y2="0" />
+                <polygon points="19.5,-3.4 26,0 19.5,3.4" />
+              </g>
             </g>
           </g>
         </svg>
@@ -875,6 +913,12 @@
       'translate(' + start.x.toFixed(1) + ',' + start.y.toFixed(1) + ')');
     hintArrow.setAttribute('transform', 'rotate(' + angle.toFixed(1) + ')');
     hintGroup.removeAttribute('display');
+
+    // Restart the cycle so the tap lands now, on this stroke, rather than
+    // wherever the previous stroke's cycle happened to have got to.
+    hintGroup.classList.remove('is-live');
+    void hintGroup.getBoundingClientRect();
+    hintGroup.classList.add('is-live');
   }
 
   function hideHint() {

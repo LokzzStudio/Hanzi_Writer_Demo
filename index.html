@@ -9,14 +9,12 @@
   :root {
     --bg: #020617;
     --panel: #0f172a;
-    --panel-soft: rgba(15, 23, 42, 0.6);
     --line: #1e293b;
     --line-soft: #334155;
     --ink: #fcd34d;
     --paper: #1a1a1a;
     --frame: #5a3a20;
     --text: #e2e8f0;
-    --muted: #64748b;
   }
 
   * { box-sizing: border-box; }
@@ -53,15 +51,28 @@
     box-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
   }
 
-  canvas {
+  /* The guide lines live on their own layer beneath the writer, which repaints
+     its canvas every frame and would otherwise wipe them. */
+  .sheet {
+    position: relative;
+    width: 280px;
+    height: 280px;
+  }
+
+  .sheet canvas {
+    position: absolute;
+    inset: 0;
     display: block;
     border-radius: 12px;
-    touch-action: none;
   }
+
+  #grid { pointer-events: none; }
+  #canvas { z-index: 1; touch-action: none; }
 
   .load-error {
     position: absolute;
     inset: 8px;
+    z-index: 2;
     display: none;
     align-items: center;
     justify-content: center;
@@ -108,8 +119,8 @@
 
   .btn svg { width: 16px; height: 16px; }
 
-  /* ── Character selection ────────────────────────────────── */
-  .characters {
+  /* ── Selections ─────────────────────────────────────────── */
+  .row {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
@@ -133,40 +144,23 @@
     border-color: rgba(245, 158, 11, 0.6);
   }
 
-  /* ── Leniency ───────────────────────────────────────────── */
-  .leniency {
-    width: 100%;
-    padding: 16px;
-    background: var(--panel-soft);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-  }
+  /* The grid choice is a smaller, quieter control so it does not read as a
+     fourteenth character to write. */
+  .grids { gap: 6px; }
 
-  .leniency-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    font-size: 14px;
-    font-weight: 700;
+  .grids .glyph {
+    width: 40px;
+    height: 36px;
+    font-size: 17px;
+    color: #64748b;
+    background: transparent;
+    border-color: var(--line);
   }
-  .leniency-head span:first-child { color: #fcd34d; }
-  .leniency-head output {
-    font-family: ui-monospace, SFMono-Regular, monospace;
-    font-size: 12px;
-    color: #fff;
-  }
-
-  input[type="range"] { width: 100%; accent-color: #f59e0b; }
-
-  .scale {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #475569;
+  .grids .glyph:hover { color: #cbd5e1; }
+  .grids .glyph[aria-pressed="true"] {
+    color: #cbd5e1;
+    background: rgba(90, 58, 32, 0.35);
+    border-color: var(--frame);
   }
 </style>
 </head>
@@ -175,7 +169,10 @@
 <main>
 
   <div class="paper">
-    <canvas id="canvas" width="280" height="280"></canvas>
+    <div class="sheet">
+      <canvas id="grid" width="280" height="280"></canvas>
+      <canvas id="canvas" width="280" height="280"></canvas>
+    </div>
     <div class="load-error" id="load-error">
       <p>No stroke data for <b id="missing-char"></b>.</p>
     </div>
@@ -192,19 +189,9 @@
     </button>
   </div>
 
-  <div class="characters" id="characters"></div>
+  <div class="row" id="characters"></div>
 
-  <div class="leniency">
-    <div class="leniency-head">
-      <span>Leniency</span>
-      <output id="leniency-value">2.5</output>
-    </div>
-    <input type="range" id="leniency" min="0.2" max="6" step="0.1" value="2.5" />
-    <div class="scale">
-      <span>0.2 strict</span>
-      <span>6.0 gestural</span>
-    </div>
-  </div>
+  <div class="row grids" id="grids"></div>
 
 </main>
 
@@ -221,20 +208,26 @@
   'use strict';
 
   var CHARACTERS = ['一', '人', '土', '木', '田', '老', '言', '雨', '風', '夏', '鳥'];
+  /** 無 draws nothing, 田 the two centre lines, 米 those plus the diagonals. */
+  var GRIDS = ['無', '田', '米'];
+
   var CANVAS_SIZE = 280;
+  var LENIENCY = 2.5;
   /** Matches the writer's own delayBetweenStrokes, since the demonstration
    *  below is driven one stroke at a time rather than in one call. */
   var DELAY_BETWEEN_STROKES = 100;
+  /** Keeps the guide lines clear of the rounded corners. */
+  var GRID_INSET = 8;
 
   var canvas = document.getElementById('canvas');
+  var gridCanvas = document.getElementById('grid');
   var loadError = document.getElementById('load-error');
   var missingChar = document.getElementById('missing-char');
   var characterList = document.getElementById('characters');
-  var leniencySlider = document.getElementById('leniency');
-  var leniencyValue = document.getElementById('leniency-value');
+  var gridList = document.getElementById('grids');
 
   var char = CHARACTERS[0];
-  var leniency = parseFloat(leniencySlider.value);
+  var grid = '田';
   var writer = null;
   var strokeCount = 0;
   /** Bumped whenever anything supersedes a running animation, so a stroke
@@ -253,6 +246,39 @@
     clip.volume = el.volume;
     var done = clip.play();
     if (done && done.catch) done.catch(function () { /* not unlocked yet */ });
+  }
+
+  /* ── Guide lines ────────────────────────────────────────── */
+
+  function drawGrid() {
+    var scale = window.devicePixelRatio || 1;
+    if (gridCanvas.width !== CANVAS_SIZE * scale) {
+      gridCanvas.width = CANVAS_SIZE * scale;
+      gridCanvas.height = CANVAS_SIZE * scale;
+    }
+    gridCanvas.style.width = CANVAS_SIZE + 'px';
+    gridCanvas.style.height = CANVAS_SIZE + 'px';
+
+    var ctx = gridCanvas.getContext('2d');
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    if (grid === '無') return;
+
+    var a = GRID_INSET;
+    var b = CANVAS_SIZE - GRID_INSET;
+    var mid = CANVAS_SIZE / 2;
+
+    ctx.strokeStyle = 'rgba(90, 58, 32, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(mid, a); ctx.lineTo(mid, b);
+    ctx.moveTo(a, mid); ctx.lineTo(b, mid);
+    if (grid === '米') {
+      ctx.moveTo(a, a); ctx.lineTo(b, b);
+      ctx.moveTo(b, a); ctx.lineTo(a, b);
+    }
+    ctx.stroke();
   }
 
   /* ── Canvas ─────────────────────────────────────────────── */
@@ -282,8 +308,6 @@
     });
   }
 
-  // Leniency is a construction-time option, so the writer is rebuilt (not
-  // mutated) whenever the character or the slider changes.
   function build() {
     run += 1;
     quizActive = false;
@@ -317,7 +341,7 @@
       outlineColor: '#5a3a20',
       drawingColor: '#fcd34d',
       drawingWidth: 15,
-      leniency: leniency,
+      leniency: LENIENCY,
       acceptBackwardsStrokes: false,
       onLoadCharDataError: function () {
         missingChar.textContent = char;
@@ -373,31 +397,36 @@
 
   /* ── Wiring ─────────────────────────────────────────────── */
 
-  CHARACTERS.forEach(function (c) {
-    var button = document.createElement('button');
-    button.className = 'glyph';
-    button.textContent = c;
-    button.setAttribute('aria-pressed', String(c === char));
-    button.addEventListener('click', function () {
-      char = c;
-      var all = characterList.querySelectorAll('.glyph');
-      for (var i = 0; i < all.length; i++) {
-        all[i].setAttribute('aria-pressed', String(all[i].textContent === char));
-      }
-      build();
+  function buildRow(container, values, isSelected, onPick) {
+    var buttons = values.map(function (value) {
+      var button = document.createElement('button');
+      button.className = 'glyph';
+      button.textContent = value;
+      button.setAttribute('aria-pressed', String(isSelected(value)));
+      button.addEventListener('click', function () {
+        onPick(value);
+        buttons.forEach(function (other) {
+          other.setAttribute('aria-pressed', String(isSelected(other.textContent)));
+        });
+      });
+      container.appendChild(button);
+      return button;
     });
-    characterList.appendChild(button);
-  });
+  }
 
-  // The readout tracks the drag, but leniency is a construction-time option,
-  // so the writer is only rebuilt once the slider is let go.
-  leniencySlider.addEventListener('input', function () {
-    leniencyValue.textContent = parseFloat(leniencySlider.value).toFixed(1);
-  });
-  leniencySlider.addEventListener('change', function () {
-    leniency = parseFloat(leniencySlider.value);
-    build();
-  });
+  buildRow(
+    characterList,
+    CHARACTERS,
+    function (value) { return value === char; },
+    function (value) { char = value; build(); }
+  );
+
+  buildRow(
+    gridList,
+    GRIDS,
+    function (value) { return value === grid; },
+    function (value) { grid = value; drawGrid(); }
+  );
 
   // hanzi-writer handles the drawing itself; this listener rides alongside it
   // purely to sound the pen touching down.
@@ -407,6 +436,8 @@
 
   document.getElementById('animate').addEventListener('click', animate);
   document.getElementById('practice').addEventListener('click', practice);
+
+  drawGrid();
 
   if (typeof HanziWriter === 'undefined') {
     missingChar.textContent = '—';

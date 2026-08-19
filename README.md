@@ -29,9 +29,7 @@ load from a CDN.
   renderer behind a retina proxy. *Animate* plays the stroke order, *Practice*
   starts the quiz.
 - **Character selection** — 一 人 土 木 田 老 言 雨 風 夏 鳥.
-- **Leniency** — the single scalar over hanzi-writer's stroke matcher,
-  multiplying the error a stroke is allowed on start/end position, shape and
-  direction. Stroke *order* is never lenient at any setting.
+- **Grid** — 無 none, 田 the two centre lines, 米 those plus the diagonals.
 
 ## Sound
 

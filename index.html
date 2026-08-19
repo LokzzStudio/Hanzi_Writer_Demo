@@ -10,28 +10,37 @@
      back to the system stack below with nothing else to change. */
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap');
 
-  /* The page keeps its dark ground either way; the theme changes the sheet the
-     character is written on, so the tokens split into chrome and sheet. */
+  /* The page keeps its dark ground in both themes, so text sitting ON that
+     ground and text sitting ON a button need separate tokens — one set has to
+     stay light while the other flips dark on a cream surface. */
   :root {
     color-scheme: dark;
 
+    /* the ground, and what sits directly on it */
     --bg: #020617;
-    --panel: #0f172a;
-    --line: #1e293b;
-    --line-soft: #334155;
     --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --text-faint: #64748b;
     --label: #475569;
-    --hover-text: #ffffff;
-    --hover-border: #64748b;
+    --label-zh: #94a3b8;
+    --rule: #1e293b;
 
+    /* button surfaces */
+    --surface: #0f172a;
+    --surface-quiet: transparent;
+    --surface-border: #1e293b;
+    --surface-border-soft: #334155;
+    --surface-border-hover: #64748b;
+    --on-surface: #94a3b8;
+    --on-surface-quiet: #64748b;
+    --on-surface-hover: #ffffff;
+
+    /* the sheet */
     --paper: #242424;
     --band: #0e0d0c;
     --frame: #7a5433;
     --grid-line: rgba(90, 58, 32, 0.85);
     --paper-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
 
+    /* what a chosen thing is marked in */
     --accent: #fcd34d;
     --accent-bright: #fef3c7;
     --accent-bg: rgba(245, 158, 11, 0.15);
@@ -39,21 +48,50 @@
     --accent-bg-strong: rgba(245, 158, 11, 0.2);
     --accent-border: rgba(245, 158, 11, 0.4);
     --accent-border-strong: rgba(245, 158, 11, 0.6);
-
     --option-bg: rgba(90, 58, 32, 0.35);
+    --option-border: #7a5433;
+
     --scrim: rgba(2, 6, 23, 0.92);
     --error: #fda4af;
     --error-strong: #ffffff;
   }
 
-  /* Ivory sheet on the same dark ground, keeping the brown frame — the paper
-     of Magic Scroll. Only the sheet changes; the chrome above is untouched. */
+  /* Paper throughout: an ivory sheet and cream buttons on a warm dark ground,
+     chosen things marked in seal red rather than lantern amber. */
   [data-theme="light"] {
+    --bg: #0d0c0a;
+    --text: #ece5d6;
+    --label: #8d8471;
+    --label-zh: #c9bfa8;
+    --rule: #38332a;
+
+    --surface: #f2ede0;
+    --surface-quiet: #e6dfcd;
+    --surface-border: #d6cdb8;
+    --surface-border-soft: #c3b9a1;
+    --surface-border-hover: #a1957a;
+    --on-surface: #4a4436;
+    --on-surface-quiet: #6e6555;
+    --on-surface-hover: #262117;
+
     --paper: #faf7ec;
     --band: #1c1a17;
     --frame: #cec6b6;
     --grid-line: rgba(201, 180, 160, 0.95);
     --paper-shadow: 0 0 34px rgba(252, 250, 241, 0.10);
+
+    /* Opaque, not translucent: these back a button that stands on the dark
+       ground, so a wash of red would go muddy instead of pink. */
+    --accent: #b3402f;
+    --accent-bright: #8c2f21;
+    --accent-bg: #f7e4df;
+    --accent-bg-hover: #f2d2cb;
+    --accent-bg-strong: #f6ded7;
+    --accent-border: #d9a294;
+    --accent-border-strong: #c07a68;
+    --option-bg: #d8c9a4;
+    --option-border: #a89264;
+
     --scrim: rgba(252, 250, 241, 0.94);
     --error: #a33b4c;
     --error-strong: #454036;
@@ -119,7 +157,7 @@
       content: "";
       flex: 1;
       height: 1px;
-      background: var(--line);
+      background: var(--rule);
     }
   }
 
@@ -217,11 +255,11 @@
     padding: 13px 24px;
     font-size: 16px;
     font-weight: 700;
-    color: var(--text-dim);
-    background: var(--panel);
-    border: 2px solid var(--line-soft);
+    color: var(--on-surface);
+    background: var(--surface);
+    border: 2px solid var(--surface-border-soft);
   }
-  .btn:hover { color: var(--hover-text); border-color: var(--hover-border); }
+  .btn:hover { color: var(--on-surface-hover); border-color: var(--surface-border-hover); }
 
   .btn.primary {
     color: var(--accent);
@@ -258,13 +296,13 @@
     content: "";
     flex: 1;
     height: 1px;
-    background: var(--line);
+    background: var(--rule);
   }
   .group-label .zh {
     font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.1em;
-    color: var(--text-dim);
+    color: var(--label-zh);
   }
 
   .row {
@@ -279,11 +317,11 @@
     height: 54px;
     font-size: 27px;
     font-weight: 700;
-    color: var(--text-dim);
-    background: var(--panel);
-    border: 2px solid var(--line);
+    color: var(--on-surface);
+    background: var(--surface);
+    border: 2px solid var(--surface-border);
   }
-  .glyph:hover { color: var(--hover-text); border-color: var(--line-soft); }
+  .glyph:hover { color: var(--on-surface-hover); border-color: var(--surface-border-soft); }
   .glyph[aria-pressed="true"] {
     color: var(--accent);
     background: var(--accent-bg-strong);
@@ -304,15 +342,15 @@
     font-size: 16px;
     font-weight: 700;
     border-radius: 14px;
-    color: var(--text-faint);
-    background: transparent;
-    border-color: var(--line);
+    color: var(--on-surface-quiet);
+    background: var(--surface-quiet);
+    border-color: var(--surface-border);
   }
-  .options .glyph:hover { color: var(--text); }
+  .options .glyph:hover { color: var(--on-surface-hover); }
   .options .glyph[aria-pressed="true"] {
-    color: var(--text);
+    color: var(--on-surface-hover);
     background: var(--option-bg);
-    border-color: var(--frame);
+    border-color: var(--option-border);
   }
 
   .options svg {

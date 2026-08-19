@@ -30,9 +30,10 @@ load from a CDN.
   starts the quiz.
 - **Character selection** — 一 人 土 木 田 老 言 雨 風 夏 鳥.
 - **Grid** — 無 none, 田 the two centre lines, 米 those plus the diagonals.
-- **Theme** — 淺色 an ivory sheet, 深色 a dark one. The page keeps its dark
-  ground either way; only the paper, its guides and the ink change. The choice
-  is remembered, and defaults to the system preference.
+- **Theme** — 淺色 paper throughout: an ivory sheet and cream buttons, chosen
+  things marked in seal red. 深色 keeps the lantern-lit dark. The ground stays
+  dark in both. The choice is remembered, and defaults to the system
+  preference.
 
 ## Sound
 

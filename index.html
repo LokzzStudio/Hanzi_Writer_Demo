@@ -129,8 +129,8 @@
      and one irregular line ruled around that. */
   .paper {
     position: relative;
-    width: 352px;
-    height: 352px;
+    width: 330px;
+    height: 330px;
     display: grid;
     place-items: center;
   }
@@ -144,15 +144,16 @@
     pointer-events: none;
     fill: none;
     stroke: var(--frame);
-    stroke-width: 4;
+    stroke-width: 1.7;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
+  /* Barely a band — the dark edge the paper sits on, not a border. */
   .band {
-    padding: 13px;
+    padding: 5px;
     background: var(--band);
-    border-radius: 28px 23px 30px 22px;
+    border-radius: 21px 17px 23px 16px;
     box-shadow: var(--paper-shadow);
     transition: background-color 0.2s ease;
   }
@@ -334,7 +335,7 @@
 <div class="stage">
 
   <div class="paper">
-    <svg class="frame" viewBox="0 0 352 352" aria-hidden="true">
+    <svg class="frame" viewBox="0 0 330 330" aria-hidden="true">
       <path id="frame-path" />
     </svg>
     <div class="band">
@@ -485,11 +486,14 @@
     };
   }
 
-  /** Sum of a few harmonics — smooth, and periodic over one turn. */
+  /** Sum of a few harmonics — smooth, and periodic over one turn. The middle
+   *  frequencies carry the most weight: those are the bends a hand makes over
+   *  the length of an edge, and they are what a single low wave cannot fake. */
   function periodicNoise(random) {
-    var waves = [1, 2, 3, 5, 8].map(function (frequency, i) {
-      return { f: frequency, a: 1 / (i + 1.35), p: random() * Math.PI * 2 };
-    });
+    var waves = [
+      { f: 1, a: 0.55 }, { f: 2, a: 0.85 }, { f: 3, a: 0.75 },
+      { f: 5, a: 0.5 },  { f: 8, a: 0.3 },  { f: 13, a: 0.16 }
+    ].map(function (w) { w.p = random() * Math.PI * 2; return w; });
     var total = waves.reduce(function (sum, w) { return sum + w.a; }, 0);
     return function (t) {
       var v = 0;
@@ -500,26 +504,6 @@
     };
   }
 
-  /** Point and outward normal at distance d around a rounded square. */
-  function roundedSquareAt(a, b, r, d) {
-    var edge = (b - a) - 2 * r;
-    var arc = (Math.PI / 2) * r;
-    var sides = [
-      { len: edge, at: function (u) { return [a + r + u, a, 0, -1]; } },
-      { len: arc,  at: function (u) { return onArc(b - r, a + r, r, 270 + (u / arc) * 90); } },
-      { len: edge, at: function (u) { return [b, a + r + u, 1, 0]; } },
-      { len: arc,  at: function (u) { return onArc(b - r, b - r, r, (u / arc) * 90); } },
-      { len: edge, at: function (u) { return [b - r - u, b, 0, 1]; } },
-      { len: arc,  at: function (u) { return onArc(a + r, b - r, r, 90 + (u / arc) * 90); } },
-      { len: edge, at: function (u) { return [a, b - r - u, -1, 0]; } },
-      { len: arc,  at: function (u) { return onArc(a + r, a + r, r, 180 + (u / arc) * 90); } }
-    ];
-    for (var i = 0; i < sides.length; i++) {
-      if (d <= sides[i].len || i === sides.length - 1) return sides[i].at(Math.min(d, sides[i].len));
-      d -= sides[i].len;
-    }
-  }
-
   function onArc(cx, cy, r, deg) {
     var rad = deg * Math.PI / 180;
     var nx = Math.cos(rad);
@@ -527,20 +511,61 @@
     return [cx + r * nx, cy + r * ny, nx, ny];
   }
 
-  /** Closed-ish spline through jittered samples, as an SVG path string. */
-  function handDrawnLoop(a, b, radius, wobble, seed) {
-    var noise = periodicNoise(mulberry32(seed));
-    var perimeter = 4 * ((b - a) - 2 * radius) + 2 * Math.PI * radius;
-    var TURNS = 1.045;          // the overshoot past the starting corner
-    var STEPS = 176;
+  /** Segment table for a rounded square whose four corners each have their own
+   *  radius — nobody draws four matching corners freehand, and a single radius
+   *  is most of what makes a generated frame look machined. */
+  function outline(a, b, radii) {
+    var tl = radii[0], tr = radii[1], br = radii[2], bl = radii[3];
+    var quarter = function (r) { return (Math.PI / 2) * r; };
+    var segments = [
+      { len: (b - a) - tl - tr, at: function (u) { return [a + tl + u, a, 0, -1]; } },
+      { len: quarter(tr), at: function (u) { return onArc(b - tr, a + tr, tr, 270 + (u / quarter(tr)) * 90); } },
+      { len: (b - a) - tr - br, at: function (u) { return [b, a + tr + u, 1, 0]; } },
+      { len: quarter(br), at: function (u) { return onArc(b - br, b - br, br, (u / quarter(br)) * 90); } },
+      { len: (b - a) - br - bl, at: function (u) { return [b - br - u, b, 0, 1]; } },
+      { len: quarter(bl), at: function (u) { return onArc(a + bl, b - bl, bl, 90 + (u / quarter(bl)) * 90); } },
+      { len: (b - a) - bl - tl, at: function (u) { return [a, b - bl - u, -1, 0]; } },
+      { len: quarter(tl), at: function (u) { return onArc(a + tl, a + tl, tl, 180 + (u / quarter(tl)) * 90); } }
+    ];
+    var perimeter = segments.reduce(function (sum, s) { return sum + s.len; }, 0);
+    return {
+      perimeter: perimeter,
+      at: function (d) {
+        for (var i = 0; i < segments.length; i++) {
+          if (d <= segments[i].len || i === segments.length - 1) {
+            return segments[i].at(Math.min(d, segments[i].len));
+          }
+          d -= segments[i].len;
+        }
+      }
+    };
+  }
+
+  /** The frame line, as an SVG path string. */
+  function handDrawnLoop(a, b, wobble, seed) {
+    var random = mulberry32(seed);
+    var noise = periodicNoise(random);
+    // Four corners, four radii, none of them equal.
+    var radii = [0, 0, 0, 0].map(function () { return 17 + random() * 15; });
+    var shape = outline(a, b, radii);
+    // A freehand square is never square to the page either.
+    var tilt = (random() - 0.5) * 0.016;
+    var cx = (a + b) / 2, cy = (a + b) / 2;
+    var cos = Math.cos(tilt), sin = Math.sin(tilt);
+
+    var TURNS = 1.022;          // the overshoot past the starting corner
+    var STEPS = 200;
     var points = [];
 
     for (var i = 0; i <= STEPS; i++) {
       var t = (i / STEPS) * TURNS;
-      var here = roundedSquareAt(a, b, radius, (t % 1) * perimeter);
+      var here = shape.at((t % 1) * shape.perimeter);
       var push = wobble * noise(t % 1);
-      if (t > 1) push += ((t - 1) / (TURNS - 1)) * 2.0;
-      points.push([here[0] + here[2] * push, here[1] + here[3] * push]);
+      // Inward, so the tail crosses the start rather than running beside it.
+      if (t > 1) push -= ((t - 1) / (TURNS - 1)) * 2.4;
+      var x = here[0] + here[2] * push - cx;
+      var y = here[1] + here[3] * push - cy;
+      points.push([cx + x * cos - y * sin, cy + x * sin + y * cos]);
     }
 
     // Catmull-Rom through the samples, written out as cubic segments.
@@ -556,7 +581,7 @@
   }
 
   document.getElementById('frame-path')
-    .setAttribute('d', handDrawnLoop(14, 338, 30, 3.9, 20260819));
+    .setAttribute('d', handDrawnLoop(11, 319, 4.6, 6180339));
 
   /* ── Guide lines ────────────────────────────────────────── */
 

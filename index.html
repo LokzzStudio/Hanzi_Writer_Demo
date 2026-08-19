@@ -164,7 +164,7 @@
     pointer-events: none;
     fill: none;
     stroke: var(--frame);
-    stroke-width: 1.7;
+    stroke-width: 1.25;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -620,7 +620,7 @@
     var cx = (a + b) / 2, cy = (a + b) / 2;
     var cos = Math.cos(tilt), sin = Math.sin(tilt);
 
-    var TURNS = 1.022;          // the overshoot past the starting corner
+    var TURNS = 1.012;          // the overshoot past the starting corner
     var STEPS = 200;
     var points = [];
 
@@ -629,7 +629,7 @@
       var here = shape.at((t % 1) * shape.perimeter);
       var push = wobble * noise(t % 1);
       // Inward, so the tail crosses the start rather than running beside it.
-      if (t > 1) push -= ((t - 1) / (TURNS - 1)) * 2.4;
+      if (t > 1) push -= ((t - 1) / (TURNS - 1)) * 1.6;
       var x = here[0] + here[2] * push - cx;
       var y = here[1] + here[3] * push - cy;
       points.push([cx + x * cos - y * sin, cy + x * sin + y * cos]);
@@ -648,7 +648,7 @@
   }
 
   document.getElementById('frame-path')
-    .setAttribute('d', handDrawnLoop(11, 319, 4.6, 6180339));
+    .setAttribute('d', handDrawnLoop(11, 319, 1.9, 6180339));
 
   /** Closed spline through points that wrap, so the seam is as smooth as the
    *  rest of the loop rather than a visible kink. */
@@ -681,7 +681,7 @@
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('.disc'), function (disc) {
-    var d = handDrawnDisc(44, 44, 34, 3.8, Number(disc.getAttribute('data-disc')));
+    var d = handDrawnDisc(44, 44, 34, 4.4, Number(disc.getAttribute('data-disc')));
     disc.setAttribute('d', d);
     // The gloss is the same shape, so the highlight is clipped to the disc.
     var gloss = disc.parentNode.querySelector('.gloss');

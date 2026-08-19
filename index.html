@@ -564,7 +564,7 @@
   function noteRate(step) {
     var octave = Math.floor(step / MAJOR_SCALE.length);
     var degree = step % MAJOR_SCALE.length;
-    return Math.pow(2, (octave * 12 + MAJOR_SCALE[degree] - 6) / 12);
+    return Math.pow(2, (octave * 12 + MAJOR_SCALE[degree]) / 12);
   }
 
   function play(id, rate) {
@@ -1128,13 +1128,11 @@
     }
   );
 
-  // hanzi-writer handles the drawing itself; this listener rides alongside it
-  // purely to sound the pen touching down.
+  // The hint has been read by the time the pen lands, so it gets out of the
+  // way. No sound here: while the writer is writing, the only voices are the
+  // ones that answer a finished stroke.
   canvas.addEventListener('pointerdown', function () {
-    if (quizActive) {
-      play('sfx-brush');
-      hideHint();
-    }
+    if (quizActive) hideHint();
   });
 
   document.getElementById('animate').addEventListener('click', animate);

@@ -338,11 +338,31 @@
 
   /* ── Sound ──────────────────────────────────────────────── */
 
-  function play(id) {
+  /** Semitones above the tonic for do re mi fa so la ti. */
+  var MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+
+  /** Playback rate that lifts a clip to the nth degree of the scale. Degrees
+   *  past ti roll into the next octave — do' re' mi' — so a long character
+   *  keeps climbing instead of sitting on its top note. */
+  function noteRate(step) {
+    var octave = Math.floor(step / MAJOR_SCALE.length);
+    var degree = step % MAJOR_SCALE.length;
+    return Math.pow(2, (octave * 12 + MAJOR_SCALE[degree]) / 12);
+  }
+
+  function play(id, rate) {
     var el = document.getElementById(id);
     if (!el) return;
     var clip = el.cloneNode();
     clip.volume = el.volume;
+    if (rate && rate !== 1) {
+      // Browsers preserve pitch across a rate change by default, which would
+      // make the clip shorter without making it higher.
+      clip.preservesPitch = false;
+      clip.mozPreservesPitch = false;
+      clip.webkitPreservesPitch = false;
+      clip.playbackRate = rate;
+    }
     var done = clip.play();
     if (done && done.catch) done.catch(function () { /* not unlocked yet */ });
   }
@@ -485,7 +505,11 @@
     run += 1;
     quizActive = true;
     writer.quiz({
-      onCorrectStroke: function () { play('sfx-correct'); },
+      // The stroke number rather than a running count, so a mistake never
+      // advances the scale and a resumed quiz picks the note back up.
+      onCorrectStroke: function (data) {
+        play('sfx-correct', noteRate(data ? data.strokeNum : 0));
+      },
       onMistake: function () { play('sfx-wrong'); },
       onComplete: function () {
         quizActive = false;

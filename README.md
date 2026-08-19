@@ -37,9 +37,25 @@ load from a CDN.
 | --- | --- |
 | Each stroke of the *Animate* demonstration begins | `brush_stroke` |
 | The pen touches down during a quiz | `brush_stroke` |
-| A correct stroke is completed | `correct_stroke` |
+| A correct stroke is completed | `correct_stroke`, pitched up the scale |
 | A wrong stroke is drawn | `wrong_stroke` |
 | The whole character is finished | `correct_word_abcd` |
 
 Browsers block sound until the page has been clicked, so the first *Animate* or
 *Practice* press is what unlocks it.
+
+### The rising scale
+
+Correct strokes climb a major scale — do re mi fa so la ti do' — one degree per
+stroke, by resampling the clip rather than by holding eight recordings. The
+playback rate for degree *n* is `2^(semitones/12)`, so do' comes out at exactly
+double speed, an octave up. `preservesPitch` has to be switched off, or the
+browser shortens the clip without raising the note.
+
+The note is taken from the stroke's own number, not from a running count, so a
+mistake never advances the scale.
+
+The eleven characters are a stroke ladder — 一 1, 人 2, 土 3, 木 4, 田 5, 老 6,
+言 7, 雨 8, 風 9, 夏 10, 鳥 11 — so 雨 lands the octave exactly on its last
+stroke. Longer characters roll on into the next octave (re' mi' fa') and keep
+climbing.

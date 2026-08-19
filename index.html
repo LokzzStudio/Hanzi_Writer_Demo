@@ -52,7 +52,7 @@
   /* A chosen thing is marked in the ink of the sheet — so this is written once,
      against --ink, and each theme only has to say what its ink is. */
   :root {
-    --accent: var(--ink);
+    --accent: rgb(var(--ink-rgb));
     --accent-bg: rgba(var(--ink-rgb), 0.15);
     --accent-bg-hover: rgba(var(--ink-rgb), 0.26);
     --accent-bg-strong: rgba(var(--ink-rgb), 0.2);
@@ -65,9 +65,11 @@
   /* Ivory paper, taupe ink — and the buttons follow, because everything above
      is written against --ink. */
   [data-theme="light"] {
-    --ink: #c4b89c;
+    /* What is written is dark, the way ink is; --ink-rgb is that same ink
+       lifted to where it can still be seen against the dark panel. */
+    --ink: #8a7d5a;
     --ink-rgb: 196, 184, 156;
-    --ink-outline: #e6dfce;
+    --ink-outline: #ded5bf;
     --paper: #faf7ec;
     --band: #1c1a17;
     --frame: #cec6b6;
@@ -164,7 +166,7 @@
     pointer-events: none;
     fill: none;
     stroke: var(--frame);
-    stroke-width: 1.7;
+    stroke-width: 2.4;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -229,9 +231,8 @@
   button:hover { transform: translateY(-1px); }
   button:active { transform: translateY(1px) scale(0.97); }
 
-  /* Two discs of the same size, drawn the way the frame is drawn: no CSS
-     circle anywhere, because a true circle is the one shape a hand never
-     makes. Each is its own wobble, off its own seed. */
+  /* The disc is drawn, not shaped by CSS — but it stays nearly true, and the
+     hand shows in the glyph on it rather than in its edge. */
   .controls {
     display: flex;
     align-items: center;
@@ -251,11 +252,6 @@
   .icon-btn svg { display: block; width: 100%; height: 100%; }
 
   .disc { stroke-linejoin: round; }
-  .disc.quiet {
-    fill: url(#fill-quiet);
-    stroke: rgba(226, 232, 240, 0.72);
-    stroke-width: 3.1;
-  }
   .disc.inked {
     fill: url(#fill-ink);
     stroke: #fff6e2;
@@ -263,7 +259,6 @@
   }
   .gloss { pointer-events: none; fill: url(#gloss); }
 
-  .icon-btn:hover .disc.quiet { stroke: rgba(226, 232, 240, 0.9); }
   .icon-btn:hover .disc.inked { stroke: #ffffff; }
 
   /* Ink is a pale colour, so what is drawn on it has to be the dark one. */
@@ -372,10 +367,6 @@
      written against --ink-rgb so they follow the theme. -->
 <svg width="0" height="0" aria-hidden="true" style="position: absolute">
   <defs>
-    <linearGradient id="fill-quiet" x1="0.25" y1="0" x2="0.72" y2="1">
-      <stop offset="0" stop-color="#38496a" />
-      <stop offset="1" stop-color="#0c1524" />
-    </linearGradient>
     <linearGradient id="fill-ink" x1="0.25" y1="0" x2="0.72" y2="1">
       <stop offset="0" style="stop-color: rgb(var(--ink-rgb))" />
       <stop offset="1" style="stop-color: rgba(var(--ink-rgb), 0.6)" />
@@ -408,27 +399,17 @@
 
   <!-- Each glyph is drawn fat and then fattened again with a matching stroke
        and round joins, which is what rounds every corner off. -->
+  <!-- Writing starts on its own, so the only button left is the one that asks
+       to be shown again. -->
   <div class="controls">
-    <button class="icon-btn" id="animate" aria-label="Animate" title="看一次 · Watch the stroke order">
-      <svg viewBox="0 0 88 88" aria-hidden="true">
-        <path class="disc quiet" data-disc="8675309" />
-        <path class="gloss" />
-        <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
-          <path class="glyph-shape" data-poly="9.6,7 18,12 9.6,17" data-seed="4242"
-                fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round" />
-        </g>
-      </svg>
-    </button>
-    <button class="icon-btn primary" id="practice" aria-label="Practice" title="自己寫 · Write it yourself">
+    <button class="icon-btn primary" id="animate" aria-label="Watch again"
+            title="再看一次 · Watch the strokes again">
       <svg viewBox="0 0 88 88" aria-hidden="true">
         <path class="disc inked" data-disc="3141592" />
         <path class="gloss" />
         <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
-          <path class="glyph-bow" data-from="18.4,5.2" data-to="13.9,9.7" data-bow="0.5"
-                fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
-          <path class="glyph-shape" data-poly="10.4,13.2 13.2,16 4.2,20.8" data-seed="1357"
-                fill="currentColor" stroke="currentColor" stroke-width="2.2"
-                stroke-linejoin="round" />
+          <path class="glyph-shape" data-poly="9.6,7 18,12 9.6,17" data-seed="4242"
+                fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round" />
         </g>
       </svg>
     </button>
@@ -479,6 +460,9 @@
   /** Matches the writer's own delayBetweenStrokes, since the demonstration
    *  below is driven one stroke at a time rather than in one call. */
   var DELAY_BETWEEN_STROKES = 100;
+  /** A beat between the demonstration ending and the canvas going live, so
+   *  the last stroke is seen before the sheet clears. */
+  var PAUSE_BEFORE_WRITING = 420;
   /** Keeps the guide lines clear of the rounded corners. */
   var GRID_INSET = 8;
   var THEME_KEY = 'hanzi-writer-demo-theme';
@@ -492,7 +476,7 @@
   var themeList = document.getElementById('themes');
 
   var char = CHARACTERS[0];
-  var grid = '田';
+  var grid = '米';
   var theme = 'dark';
   var writer = null;
   var strokeCount = 0;
@@ -514,7 +498,7 @@
   function noteRate(step) {
     var octave = Math.floor(step / MAJOR_SCALE.length);
     var degree = step % MAJOR_SCALE.length;
-    return Math.pow(2, (octave * 12 + MAJOR_SCALE[degree]) / 12);
+    return Math.pow(2, (octave * 12 + MAJOR_SCALE[degree] - 6) / 12);
   }
 
   function play(id, rate) {
@@ -856,11 +840,19 @@
       onLoadCharDataError: function () {
         missingChar.textContent = char;
         loadError.classList.add('shown');
-      },
-      onLoadCharDataSuccess: function (data) {
-        strokeCount = (data && data.strokes) ? data.strokes.length : 0;
       }
     });
+
+    // Picking a character is the whole gesture: the sheet shows it once, then
+    // hands itself over. Chained off getCharacterData rather than off the
+    // load callback — that one fires while the writer is still assembling,
+    // before it has anything to animate with, and drops the request.
+    var forBuild = run;
+    writer.getCharacterData().then(function (data) {
+      if (forBuild !== run) return;
+      strokeCount = (data && data.strokes) ? data.strokes.length : 0;
+      animate();
+    }).catch(function () { /* onLoadCharDataError has the message */ });
   }
 
   /** Plays the strokes one at a time so each one can be sounded as it starts —
@@ -879,7 +871,13 @@
 
     var i = 0;
     (function step() {
-      if (thisRun !== run || i >= strokeCount) return;
+      if (thisRun !== run) return;
+      if (i >= strokeCount) {
+        // The demonstration is over, so it is the writer's turn — this is the
+        // only way writing starts, since there is no button for it.
+        window.setTimeout(function () { if (thisRun === run) practice(); }, PAUSE_BEFORE_WRITING);
+        return;
+      }
       play('sfx-brush');
       writer.animateStroke(i, {
         onComplete: function () {
@@ -1013,7 +1011,6 @@
   });
 
   document.getElementById('animate').addEventListener('click', animate);
-  document.getElementById('practice').addEventListener('click', practice);
 
   applyTheme(initialTheme());
   refreshThemes();

@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import HanziWriter from 'hanzi-writer';
 import { PenTool, Play } from 'lucide-react';
+import { primeSfx, playSfx } from '../lib/sfx';
 
 const DEFAULT_LENIENCY = 2.5;
 const CANVAS_SIZE = 280;
+/** Matches the writer's own `delayBetweenStrokes`, since the demonstration
+ *  animation below is driven one stroke at a time rather than in one call. */
+const DELAY_BETWEEN_STROKES = 100;
 
 /** hanzi-writer sizes the canvas in CSS pixels, so the proxy inflates the
  *  backing store by DPR and pre-scales the context to keep strokes crisp. */
@@ -38,16 +42,73 @@ export default function HanziWriterDemo() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const writerRef = useRef<any>(null);
+  const strokeCountRef = useRef(0);
+  /** Bumped whenever anything supersedes a running animation, so a stroke
+   *  callback from the previous run cannot queue the next stroke. */
+  const runRef = useRef(0);
+  /** The brush sound is the player's pen touching down, so it must not fire
+   *  when the canvas is tapped outside a quiz. */
+  const quizActiveRef = useRef(false);
 
-  const startQuiz = useCallback(() => {
-    writerRef.current?.quiz();
-  }, []);
+  useEffect(() => { primeSfx(); }, []);
 
+  /** Plays the strokes one at a time so each one can be sounded as it starts —
+   *  `animateCharacter` runs the whole glyph in a single call with no per-stroke
+   *  hook. `hideCharacter` first, exactly as `animateCharacter` does internally,
+   *  which is what clears the previous strokes. */
   const animate = useCallback(() => {
+    primeSfx();
     const writer = writerRef.current;
     if (!writer) return;
+
     writer.cancelQuiz();
-    writer.animateCharacter();
+    quizActiveRef.current = false;
+    runRef.current += 1;
+    const run = runRef.current;
+
+    const total = strokeCountRef.current;
+    if (!total) return;
+
+    writer.hideCharacter({ duration: 0 });
+
+    let i = 0;
+    const step = () => {
+      if (run !== runRef.current || i >= total) return;
+      playSfx('brush');
+      writer.animateStroke(i, {
+        onComplete: () => {
+          if (run !== runRef.current) return;
+          i += 1;
+          window.setTimeout(step, DELAY_BETWEEN_STROKES);
+        },
+      });
+    };
+    step();
+  }, []);
+
+  const startQuiz = useCallback(() => {
+    primeSfx();
+    const writer = writerRef.current;
+    if (!writer) return;
+
+    runRef.current += 1;
+    quizActiveRef.current = true;
+    writer.quiz({
+      onCorrectStroke: () => playSfx('correctStroke'),
+      onMistake: () => playSfx('wrongStroke'),
+      onComplete: () => {
+        quizActiveRef.current = false;
+        playSfx('correctWord');
+      },
+    });
+  }, []);
+
+  /** hanzi-writer handles the drawing itself; this listener rides alongside it
+   *  purely to sound the pen touching down. */
+  const onCanvasPointerDown = useCallback(() => {
+    if (!quizActiveRef.current) return;
+    primeSfx();
+    playSfx('brush');
   }, []);
 
   // Leniency is a construction-time option, so the writer is rebuilt (not
@@ -57,6 +118,9 @@ export default function HanziWriterDemo() {
     if (!canvas) return;
 
     setLoadError(false);
+    runRef.current += 1;
+    quizActiveRef.current = false;
+    strokeCountRef.current = 0;
 
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -71,7 +135,7 @@ export default function HanziWriterDemo() {
       padding: 15,
       renderer: 'canvas',
       strokeAnimationSpeed: 1.5,
-      delayBetweenStrokes: 100,
+      delayBetweenStrokes: DELAY_BETWEEN_STROKES,
       showOutline: true,
       strokeColor: '#fcd34d',
       radicalColor: '#fcd34d',
@@ -81,10 +145,12 @@ export default function HanziWriterDemo() {
       leniency,
       acceptBackwardsStrokes: false,
       onLoadCharDataError: () => setLoadError(true),
+      onLoadCharDataSuccess: (data: any) => {
+        strokeCountRef.current = data?.strokes?.length ?? 0;
+      },
     } as any);
 
     writerRef.current = writer;
-    writer.animateCharacter();
 
     return () => {
       try {
@@ -106,6 +172,7 @@ export default function HanziWriterDemo() {
           ref={canvasRef}
           width={CANVAS_SIZE}
           height={CANVAS_SIZE}
+          onPointerDown={onCanvasPointerDown}
           className="touch-none block rounded-xl"
           style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}
         />

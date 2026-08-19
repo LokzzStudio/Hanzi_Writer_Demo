@@ -227,71 +227,51 @@
     z-index: 2;
   }
 
-  /* One gesture per cycle, and a rest after it: a single ring opens, the
-     arrow sets off behind it, and then the mark is quiet for a beat. Three
-     ripples chasing each other read as urgency, which is the opposite of
-     what a child sitting down to write needs. The whole thing restarts when
-     the hint moves, so the tap lands as the stroke becomes the next one. */
-  #hint-group .hint-glow { fill: var(--ink); opacity: 0.15; }
-  #hint-group .hint-dot  { fill: var(--ink); opacity: 0.85; }
+  /* Two rings, half a cycle apart, so a second one is already on its way out
+     as the next opens — never a third, and never a gap worth calling a pause.
+     Yellow in both themes by request, rather than following the sheet.
+     The cycle restarts when the hint moves, so the tap lands as the stroke
+     becomes the next one. */
+  #hint-group .hint-glow { fill: #fcd34d; opacity: 0.16; }
+  #hint-group .hint-dot  { fill: #fcd34d; opacity: 0.9; }
 
   #hint-group .hint-ring {
     fill: none;
-    stroke: var(--ink);
+    stroke: #fcd34d;
     stroke-width: 2;
     opacity: 0;
   }
 
-  #hint-group .hint-arrow line {
-    stroke: var(--ink);
-    stroke-width: 2.8;
-    stroke-linecap: round;
-  }
-  #hint-group .hint-arrow polygon { fill: var(--ink); }
-  #hint-group .hint-arrow-glide { opacity: 0; }
-
   #hint-group.is-live .hint-ring,
-  #hint-group.is-live .hint-dot,
-  #hint-group.is-live .hint-arrow-glide {
+  #hint-group.is-live .hint-dot {
     transform-box: fill-box;
     transform-origin: center;
-    animation-duration: 3.4s;
+    animation-duration: 2.4s;
     animation-iteration-count: infinite;
   }
-  #hint-group.is-live .hint-ring  { animation-name: hint-ring;  animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
-  #hint-group.is-live .hint-dot   { animation-name: hint-tap;   animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1); }
-  #hint-group.is-live .hint-arrow-glide {
-    transform-box: view-box;
-    animation-name: hint-travel;
-    animation-timing-function: cubic-bezier(0.25, 0.7, 0.3, 1);
-  }
+  #hint-group.is-live .hint-ring { animation-name: hint-ring; animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
+  #hint-group.is-live .hint-ring-late { animation-delay: 1.2s; }
+  #hint-group.is-live .hint-dot  { animation-name: hint-tap;  animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1); }
 
+  /* Visible for 62% of the cycle against a 50% stagger: the overlap is the
+     0.29s where two are up, which is the ceiling. */
   @keyframes hint-ring {
     0%   { transform: scale(0.55); opacity: 0; }
-    10%  { opacity: 0.45; }
-    48%  { transform: scale(2.3);  opacity: 0; }
-    100% { transform: scale(2.3);  opacity: 0; }
+    9%   { opacity: 0.55; }
+    40%  { opacity: 0.36; }
+    62%  { transform: scale(2.4);  opacity: 0; }
+    100% { transform: scale(2.4);  opacity: 0; }
   }
 
   @keyframes hint-tap {
     0%        { transform: scale(1); }
-    7%        { transform: scale(1.4); }
-    26%, 100% { transform: scale(1); }
-  }
-
-  /* Inside the rotated group, so this travels along the stroke. */
-  @keyframes hint-travel {
-    0%   { transform: translateX(-3px); opacity: 0; }
-    16%  { opacity: 0.9; }
-    52%  { transform: translateX(8px); opacity: 0; }
-    100% { transform: translateX(8px); opacity: 0; }
+    8%        { transform: scale(1.4); }
+    30%, 100% { transform: scale(1); }
   }
 
   @media (prefers-reduced-motion: reduce) {
     #hint-group.is-live .hint-ring,
-    #hint-group.is-live .hint-dot,
-    #hint-group.is-live .hint-arrow-glide { animation: none; }
-    #hint-group .hint-arrow-glide { opacity: 0.9; }
+    #hint-group.is-live .hint-dot { animation: none; }
   }
 
   /* ── Buttons ────────────────────────────────────────────── */
@@ -469,16 +449,9 @@
         <svg id="stroke-hint" class="stroke-hint" width="280" height="280" viewBox="0 0 280 280" aria-hidden="true">
           <g id="hint-group" display="none">
             <circle class="hint-ring" r="9" />
+            <circle class="hint-ring hint-ring-late" r="9" />
             <circle class="hint-glow" r="12" />
             <circle class="hint-dot" r="4" />
-            <!-- The rotation lives on the outer group and the motion on the
-                 inner one, so a CSS transform never overwrites the aim. -->
-            <g id="hint-arrow" class="hint-arrow">
-              <g class="hint-arrow-glide">
-                <line x1="9" y1="0" x2="22" y2="0" />
-                <polygon points="19.5,-3.4 26,0 19.5,3.4" />
-              </g>
-            </g>
           </g>
         </svg>
         <div class="load-error" id="load-error">
@@ -554,8 +527,6 @@
   /** A beat between the demonstration ending and the canvas going live, so
    *  the last stroke is seen before the sheet clears. */
   var PAUSE_BEFORE_WRITING = 420;
-  /** How far along the spine to look before trusting a direction. */
-  var HINT_AIM_DISTANCE = 12;
   /** Keeps the guide lines clear of the rounded corners. */
   var GRID_INSET = 8;
   var THEME_KEY = 'hanzi-writer-demo-theme';
@@ -568,7 +539,6 @@
   var gridList = document.getElementById('grids');
   var themeList = document.getElementById('themes');
   var hintGroup = document.getElementById('hint-group');
-  var hintArrow = document.getElementById('hint-arrow');
 
   var char = CHARACTERS[0];
   var grid = '米';
@@ -895,23 +865,8 @@
     var start = spine && charToCanvas(spine[0]);
     if (!start) { hideHint(); return; }
 
-    // Aim at the first point that is actually somewhere else — the spine
-    // often starts with a couple of samples nearly on top of each other, and
-    // those give a direction that is pure noise.
-    var aim = null;
-    for (var i = 1; i < spine.length; i++) {
-      var candidate = charToCanvas(spine[i]);
-      var dx = candidate.x - start.x;
-      var dy = candidate.y - start.y;
-      if (dx * dx + dy * dy >= HINT_AIM_DISTANCE * HINT_AIM_DISTANCE) { aim = candidate; break; }
-      aim = candidate;
-    }
-    if (!aim) { hideHint(); return; }
-
-    var angle = Math.atan2(aim.y - start.y, aim.x - start.x) * 180 / Math.PI;
     hintGroup.setAttribute('transform',
       'translate(' + start.x.toFixed(1) + ',' + start.y.toFixed(1) + ')');
-    hintArrow.setAttribute('transform', 'rotate(' + angle.toFixed(1) + ')');
     hintGroup.removeAttribute('display');
 
     // Restart the cycle so the tap lands now, on this stroke, rather than

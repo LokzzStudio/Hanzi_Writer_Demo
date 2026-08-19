@@ -6,6 +6,10 @@
 <title>Hanzi Writer — Handwriting Demo</title>
 
 <style>
+  /* A rounded face for the Latin text. Delete this line and the page falls
+     back to the system stack below with nothing else to change. */
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap');
+
   /* The page keeps its dark ground either way; the theme changes the sheet the
      character is written on, so the tokens split into chrome and sheet. */
   :root {
@@ -23,7 +27,8 @@
     --hover-border: #64748b;
 
     --paper: #1a1a1a;
-    --frame: #5a3a20;
+    --frame: #7a5433;
+    --frame-inner: #5a3a20;
     --grid-line: rgba(90, 58, 32, 0.85);
     --paper-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
 
@@ -44,8 +49,10 @@
   /* Ivory sheet on the same dark ground, keeping the brown frame — the paper
      of Magic Scroll. Only the sheet changes; the chrome above is untouched. */
   [data-theme="light"] {
-    --paper: #fcfaf1;
-    --grid-line: rgba(184, 170, 138, 0.95);
+    --paper: #faf7ec;
+    --frame: #cec6b6;
+    --frame-inner: #b8b0a0;
+    --grid-line: rgba(201, 180, 160, 0.95);
     --paper-shadow: 0 0 34px rgba(252, 250, 241, 0.10);
     --scrim: rgba(252, 250, 241, 0.94);
     --error: #a33b4c;
@@ -59,7 +66,8 @@
     padding: 24px 16px;
     background: var(--bg);
     color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "Baloo 2", ui-rounded, "Segoe UI Variable Display",
+                 ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.2s ease, color 0.2s ease;
   }
@@ -86,13 +94,13 @@
   .panels {
     grid-column: 3;
     justify-self: start;
-    width: 328px;
+    width: 372px;
     display: flex;
     flex-direction: column;
     gap: 30px;
   }
 
-  @media (max-width: 1120px) {
+  @media (max-width: 1320px) {
     .layout {
       grid-template-columns: 1fr;
       justify-items: center;
@@ -116,15 +124,31 @@
   }
 
   /* ── Canvas ─────────────────────────────────────────────── */
+
+  /* A drawn double border rather than a CSS one: the two strokes wobble off
+     true, so the sheet looks like a page someone ruled by hand. */
   .paper {
     position: relative;
-    padding: 8px;
-    border: 2px solid var(--frame);
-    border-radius: 16px;
-    background: var(--paper);
-    box-shadow: var(--paper-shadow);
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    width: 352px;
+    height: 352px;
+    display: grid;
+    place-items: center;
   }
+
+  /* Drawn in a 320 box and scaled out to 352, which opens the gap between the
+     inner line and the edge of the sheet. */
+  .frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .frame .outer { stroke: var(--frame); stroke-width: 4.1; }
+  .frame .inner { stroke: var(--frame-inner); stroke-width: 1.8; }
 
   /* The guide lines live on their own layer beneath the writer, which repaints
      its canvas every frame and would otherwise wipe them. */
@@ -132,13 +156,17 @@
     position: relative;
     width: 280px;
     height: 280px;
+    border-radius: 20px 16px 22px 15px;
+    background: var(--paper);
+    box-shadow: var(--paper-shadow);
+    transition: background-color 0.2s ease;
   }
 
   .sheet canvas {
     position: absolute;
     inset: 0;
     display: block;
-    border-radius: 12px;
+    border-radius: inherit;
   }
 
   #grid { pointer-events: none; }
@@ -146,13 +174,13 @@
 
   .load-error {
     position: absolute;
-    inset: 8px;
+    inset: 0;
     z-index: 2;
     display: none;
     align-items: center;
     justify-content: center;
     padding: 16px;
-    border-radius: 12px;
+    border-radius: inherit;
     background: var(--scrim);
     color: var(--error);
     font-size: 14px;
@@ -164,35 +192,38 @@
   /* ── Buttons ────────────────────────────────────────────── */
   .controls { display: flex; gap: 8px; }
 
+  /* Big, round and springy — the whole page is aimed at small hands. */
   button {
     font: inherit;
     cursor: pointer;
-    border-radius: 8px;
-    transition: all 0.15s ease;
+    border-radius: 16px;
+    transition: transform 0.12s ease, background-color 0.15s ease,
+                border-color 0.15s ease, color 0.15s ease;
   }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(1px) scale(0.97); }
 
   .btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 16px;
-    font-size: 14px;
-    font-weight: 500;
+    gap: 9px;
+    padding: 13px 24px;
+    font-size: 16px;
+    font-weight: 700;
     color: var(--text-dim);
     background: var(--panel);
-    border: 1px solid var(--line-soft);
+    border: 2px solid var(--line-soft);
   }
   .btn:hover { color: var(--hover-text); border-color: var(--hover-border); }
 
   .btn.primary {
-    font-weight: 700;
     color: var(--accent);
     background: var(--accent-bg);
     border-color: var(--accent-border);
   }
   .btn.primary:hover { background: var(--accent-bg-hover); color: var(--accent-bright); }
 
-  .btn svg { width: 16px; height: 16px; }
+  .btn svg { width: 18px; height: 18px; }
 
   /* ── Selections ─────────────────────────────────────────── */
 
@@ -237,13 +268,13 @@
   }
 
   .glyph {
-    width: 48px;
-    height: 48px;
-    font-size: 24px;
+    width: 54px;
+    height: 54px;
+    font-size: 27px;
     font-weight: 700;
     color: var(--text-dim);
     background: var(--panel);
-    border: 1px solid var(--line);
+    border: 2px solid var(--line);
   }
   .glyph:hover { color: var(--hover-text); border-color: var(--line-soft); }
   .glyph[aria-pressed="true"] {
@@ -261,10 +292,11 @@
     align-items: center;
     gap: 8px;
     width: auto;
-    height: 38px;
-    padding: 0 13px;
-    font-size: 15px;
-    font-weight: 600;
+    height: 44px;
+    padding: 0 15px;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: 14px;
     color: var(--text-faint);
     background: transparent;
     border-color: var(--line);
@@ -296,12 +328,16 @@
 <div class="stage">
 
   <div class="paper">
+    <svg class="frame" viewBox="0 0 320 320" aria-hidden="true">
+      <path class="outer" d="M26 9 C110 5 210 6 294 10 C305 10.5 312 17 312 27 C316 110 315 210 311 294 C310.5 305 304 312 294 312 C210 316 110 315 26 311 C15 310.5 8 304 8 294 C4 210 5 110 9 26 C9.5 15 16 9 26 9 Z" />
+      <path class="inner" d="M32 19 C112 15.5 208 16.5 288 20 C297 20.5 302 26 302 34 C305 112 304 208 301 288 C300.5 297 295 302 287 302 C208 305.5 112 304.5 32 301 C23 300.5 18 295 18 287 C15 208 16 112 19 32 C19.5 23 25 19 32 19 Z" />
+    </svg>
     <div class="sheet">
       <canvas id="grid" width="280" height="280"></canvas>
       <canvas id="canvas" width="280" height="280"></canvas>
-    </div>
-    <div class="load-error" id="load-error">
-      <p>No stroke data for <b id="missing-char"></b>.</p>
+      <div class="load-error" id="load-error">
+        <p>No stroke data for <b id="missing-char"></b>.</p>
+      </div>
     </div>
   </div>
 

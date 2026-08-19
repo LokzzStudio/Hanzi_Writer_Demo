@@ -26,8 +26,9 @@ load from a CDN.
 ## The page
 
 - **Canvas** — [hanzi-writer](https://hanziwriter.org) on a 280×280 canvas
-  renderer behind a retina proxy. *Animate* plays the stroke order, *Practice*
-  starts the quiz.
+  renderer behind a retina proxy. Two discs underneath: play watches the stroke
+  order, brush starts the quiz. They are drawn by the same generator as the
+  frame, so neither is a circle and no two are the same shape.
 - **Character selection** — 一 人 土 木 田 老 言 雨 風 夏 鳥.
 - **Grid** — 無 none, 田 the two centre lines, 米 those plus the diagonals.
 - **Theme** — which sheet you write on: 淺色 ivory paper with taupe ink, 深色

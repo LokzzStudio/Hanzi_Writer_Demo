@@ -217,7 +217,6 @@
   .load-error b { color: var(--error-strong); font-size: 18px; }
 
   /* ── Buttons ────────────────────────────────────────────── */
-  .controls { display: flex; gap: 8px; }
 
   /* Big, round and springy — the whole page is aimed at small hands. */
   button {
@@ -230,27 +229,45 @@
   button:hover { transform: translateY(-1px); }
   button:active { transform: translateY(1px) scale(0.97); }
 
-  .btn {
+  /* Two discs of the same size, drawn the way the frame is drawn: no CSS
+     circle anywhere, because a true circle is the one shape a hand never
+     makes. Each is its own wobble, off its own seed. */
+  .controls {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 13px 24px;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--on-surface);
-    background: var(--surface);
-    border: 2px solid var(--surface-border-soft);
+    gap: 22px;
   }
-  .btn:hover { color: var(--on-surface-hover); border-color: var(--surface-border-hover); }
 
-  .btn.primary {
-    color: var(--accent);
-    background: var(--accent-bg);
-    border-color: var(--accent-border);
+  .icon-btn {
+    width: 86px;
+    height: 86px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: #dbe3ee;
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
   }
-  .btn.primary:hover { background: var(--accent-bg-hover); color: var(--accent-bright); }
+  .icon-btn svg { display: block; width: 100%; height: 100%; }
 
-  .btn svg { width: 18px; height: 18px; }
+  .disc { stroke-linejoin: round; }
+  .disc.quiet {
+    fill: url(#fill-quiet);
+    stroke: rgba(226, 232, 240, 0.72);
+    stroke-width: 5.4;
+  }
+  .disc.inked {
+    fill: url(#fill-ink);
+    stroke: #fff6e2;
+    stroke-width: 5.6;
+  }
+  .gloss { pointer-events: none; fill: url(#gloss); }
+
+  .icon-btn:hover .disc.quiet { stroke: rgba(226, 232, 240, 0.9); }
+  .icon-btn:hover .disc.inked { stroke: #ffffff; }
+
+  /* Ink is a pale colour, so what is drawn on it has to be the dark one. */
+  .icon-btn.primary { color: var(--band); }
 
   /* ── Selections ─────────────────────────────────────────── */
 
@@ -350,6 +367,26 @@
 </head>
 
 <body>
+
+<!-- Fills for the discs. Kept out of the buttons so both can share them, and
+     written against --ink-rgb so they follow the theme. -->
+<svg width="0" height="0" aria-hidden="true" style="position: absolute">
+  <defs>
+    <linearGradient id="fill-quiet" x1="0.25" y1="0" x2="0.72" y2="1">
+      <stop offset="0" stop-color="#38496a" />
+      <stop offset="1" stop-color="#0c1524" />
+    </linearGradient>
+    <linearGradient id="fill-ink" x1="0.25" y1="0" x2="0.72" y2="1">
+      <stop offset="0" style="stop-color: rgb(var(--ink-rgb))" />
+      <stop offset="1" style="stop-color: rgba(var(--ink-rgb), 0.6)" />
+    </linearGradient>
+    <radialGradient id="gloss" cx="0.36" cy="0.24" r="0.6">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.5" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+</svg>
+
 <div class="layout">
 
 <div class="stage">
@@ -369,14 +406,31 @@
     </div>
   </div>
 
+  <!-- Each glyph is drawn fat and then fattened again with a matching stroke
+       and round joins, which is what rounds every corner off. -->
   <div class="controls">
-    <button class="btn" id="animate">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-      Animate
+    <button class="icon-btn" id="animate" aria-label="Animate" title="看一次 · Watch the stroke order">
+      <svg viewBox="0 0 88 88" aria-hidden="true">
+        <path class="disc quiet" data-disc="8675309" />
+        <path class="gloss" />
+        <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
+          <polygon points="9.6,7 18,12 9.6,17"
+                   fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round" />
+        </g>
+      </svg>
     </button>
-    <button class="btn primary" id="practice">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
-      Practice
+    <button class="icon-btn primary" id="practice" aria-label="Practice" title="自己寫 · Write it yourself">
+      <svg viewBox="0 0 88 88" aria-hidden="true">
+        <path class="disc inked" data-disc="3141592" />
+        <path class="gloss" />
+        <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
+          <line x1="18.4" y1="5.2" x2="13.9" y2="9.7"
+                stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
+          <path d="M10.4 13.2 L13.2 16 L4.2 20.8 Z"
+                fill="currentColor" stroke="currentColor" stroke-width="2.2"
+                stroke-linejoin="round" />
+        </g>
+      </svg>
     </button>
   </div>
 
@@ -595,6 +649,44 @@
 
   document.getElementById('frame-path')
     .setAttribute('d', handDrawnLoop(11, 319, 4.6, 6180339));
+
+  /** Closed spline through points that wrap, so the seam is as smooth as the
+   *  rest of the loop rather than a visible kink. */
+  function closedSpline(points) {
+    var n = points.length;
+    var at = function (i) { return points[((i % n) + n) % n]; };
+    var d = 'M' + at(0)[0].toFixed(2) + ' ' + at(0)[1].toFixed(2);
+    for (var i = 0; i < n; i++) {
+      var p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+      d += ' C' + (p1[0] + (p2[0] - p0[0]) / 6).toFixed(2) + ' ' + (p1[1] + (p2[1] - p0[1]) / 6).toFixed(2)
+         + ' ' + (p2[0] - (p3[0] - p1[0]) / 6).toFixed(2) + ' ' + (p2[1] - (p3[1] - p1[1]) / 6).toFixed(2)
+         + ' ' + p2[0].toFixed(2) + ' ' + p2[1].toFixed(2);
+    }
+    return d + ' Z';
+  }
+
+  /** The buttons, drawn the same way the frame is: the radius wanders as it
+   *  goes round, so no two of them are the same shape and none is a circle. */
+  function handDrawnDisc(cx, cy, radius, wobble, seed) {
+    var noise = periodicNoise(mulberry32(seed));
+    var STEPS = 108;
+    var points = [];
+    for (var i = 0; i < STEPS; i++) {
+      var t = i / STEPS;
+      var angle = t * Math.PI * 2;
+      var r = radius + wobble * noise(t);
+      points.push([cx + Math.cos(angle) * r, cy + Math.sin(angle) * r]);
+    }
+    return closedSpline(points);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.disc'), function (disc) {
+    var d = handDrawnDisc(44, 44, 34, 3.8, Number(disc.getAttribute('data-disc')));
+    disc.setAttribute('d', d);
+    // The gloss is the same shape, so the highlight is clipped to the disc.
+    var gloss = disc.parentNode.querySelector('.gloss');
+    if (gloss) gloss.setAttribute('d', d);
+  });
 
   /** One place to read a colour out of the stylesheet. */
   function token(name, fallback) {

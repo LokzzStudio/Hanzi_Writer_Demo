@@ -1,20 +1,55 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hanzi Writer — Handwriting Demo</title>
 
 <style>
+  /* The page keeps its dark ground either way; the theme changes the sheet the
+     character is written on, so the tokens split into chrome and sheet. */
   :root {
+    color-scheme: dark;
+
     --bg: #020617;
     --panel: #0f172a;
     --line: #1e293b;
     --line-soft: #334155;
-    --ink: #fcd34d;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-faint: #64748b;
+    --label: #475569;
+    --hover-text: #ffffff;
+    --hover-border: #64748b;
+
     --paper: #1a1a1a;
     --frame: #5a3a20;
-    --text: #e2e8f0;
+    --grid-line: rgba(90, 58, 32, 0.85);
+    --paper-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
+
+    --accent: #fcd34d;
+    --accent-bright: #fef3c7;
+    --accent-bg: rgba(245, 158, 11, 0.15);
+    --accent-bg-hover: rgba(245, 158, 11, 0.25);
+    --accent-bg-strong: rgba(245, 158, 11, 0.2);
+    --accent-border: rgba(245, 158, 11, 0.4);
+    --accent-border-strong: rgba(245, 158, 11, 0.6);
+
+    --option-bg: rgba(90, 58, 32, 0.35);
+    --scrim: rgba(2, 6, 23, 0.92);
+    --error: #fda4af;
+    --error-strong: #ffffff;
+  }
+
+  /* Ivory sheet on the same dark ground, keeping the brown frame — the paper
+     of Magic Scroll. Only the sheet changes; the chrome above is untouched. */
+  [data-theme="light"] {
+    --paper: #fcfaf1;
+    --grid-line: rgba(184, 170, 138, 0.95);
+    --paper-shadow: 0 0 34px rgba(252, 250, 241, 0.10);
+    --scrim: rgba(252, 250, 241, 0.94);
+    --error: #a33b4c;
+    --error-strong: #454036;
   }
 
   * { box-sizing: border-box; }
@@ -26,6 +61,7 @@
     color: var(--text);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* Equal flexible columns either side of the sheet, so the sheet sits in the
@@ -36,7 +72,7 @@
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    gap: 36px 56px;
+    gap: 36px 104px;
   }
 
   .stage {
@@ -56,7 +92,7 @@
     gap: 30px;
   }
 
-  @media (max-width: 1040px) {
+  @media (max-width: 1120px) {
     .layout {
       grid-template-columns: 1fr;
       justify-items: center;
@@ -86,7 +122,8 @@
     border: 2px solid var(--frame);
     border-radius: 16px;
     background: var(--paper);
-    box-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
+    box-shadow: var(--paper-shadow);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
   }
 
   /* The guide lines live on their own layer beneath the writer, which repaints
@@ -116,13 +153,13 @@
     justify-content: center;
     padding: 16px;
     border-radius: 12px;
-    background: rgba(2, 6, 23, 0.92);
-    color: #fda4af;
+    background: var(--scrim);
+    color: var(--error);
     font-size: 14px;
     text-align: center;
   }
   .load-error.shown { display: flex; }
-  .load-error b { color: #fff; font-size: 18px; }
+  .load-error b { color: var(--error-strong); font-size: 18px; }
 
   /* ── Buttons ────────────────────────────────────────────── */
   .controls { display: flex; gap: 8px; }
@@ -141,26 +178,26 @@
     padding: 9px 16px;
     font-size: 14px;
     font-weight: 500;
-    color: #cbd5e1;
+    color: var(--text-dim);
     background: var(--panel);
     border: 1px solid var(--line-soft);
   }
-  .btn:hover { color: #fff; border-color: #64748b; }
+  .btn:hover { color: var(--hover-text); border-color: var(--hover-border); }
 
   .btn.primary {
     font-weight: 700;
-    color: #fcd34d;
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.4);
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-color: var(--accent-border);
   }
-  .btn.primary:hover { background: rgba(245, 158, 11, 0.25); color: #fef3c7; }
+  .btn.primary:hover { background: var(--accent-bg-hover); color: var(--accent-bright); }
 
   .btn svg { width: 16px; height: 16px; }
 
   /* ── Selections ─────────────────────────────────────────── */
 
-  /* The two rows pick different kinds of thing — one changes what you write,
-     the other only how the sheet looks — so each is captioned and ruled off. */
+  /* The rows pick different kinds of thing — one changes what you write, the
+     others only how the page looks — so each is captioned and ruled off. */
   .group {
     width: 100%;
     display: flex;
@@ -177,7 +214,7 @@
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #475569;
+    color: var(--label);
   }
   .group-label::after {
     content: "";
@@ -189,7 +226,7 @@
     font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.1em;
-    color: #94a3b8;
+    color: var(--text-dim);
   }
 
   .row {
@@ -204,46 +241,49 @@
     height: 48px;
     font-size: 24px;
     font-weight: 700;
-    color: #94a3b8;
+    color: var(--text-dim);
     background: var(--panel);
     border: 1px solid var(--line);
   }
-  .glyph:hover { color: #fff; border-color: var(--line-soft); }
+  .glyph:hover { color: var(--hover-text); border-color: var(--line-soft); }
   .glyph[aria-pressed="true"] {
-    color: #fde68a;
-    background: rgba(245, 158, 11, 0.2);
-    border-color: rgba(245, 158, 11, 0.6);
+    color: var(--accent);
+    background: var(--accent-bg-strong);
+    border-color: var(--accent-border-strong);
   }
 
-  /* Each grid option carries a picture of the sheet it produces, so it reads
-     as a setting rather than as a twelfth character to write. */
-  .grids { gap: 6px; }
+  /* Settings carry a picture of what they do, so they read as options rather
+     than as more characters to write. */
+  .options { gap: 6px; }
 
-  .grids .glyph {
+  .options .glyph {
     display: flex;
     align-items: center;
     gap: 8px;
     width: auto;
     height: 38px;
     padding: 0 13px;
-    font-size: 16px;
-    color: #64748b;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-faint);
     background: transparent;
     border-color: var(--line);
   }
-  .grids .glyph:hover { color: #cbd5e1; }
-  .grids .glyph[aria-pressed="true"] {
-    color: #e2e8f0;
-    background: rgba(90, 58, 32, 0.35);
+  .options .glyph:hover { color: var(--text); }
+  .options .glyph[aria-pressed="true"] {
+    color: var(--text);
+    background: var(--option-bg);
     border-color: var(--frame);
   }
 
-  .grids svg {
+  .options svg {
     width: 19px;
     height: 19px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .grids svg rect { opacity: 0.35; }
   .grids svg line { opacity: 0.85; }
@@ -287,7 +327,12 @@
 
   <section class="group">
     <h2 class="group-label"><span class="zh">格線</span> Guide lines</h2>
-    <div class="row grids" id="grids"></div>
+    <div class="row options grids" id="grids"></div>
+  </section>
+
+  <section class="group">
+    <h2 class="group-label"><span class="zh">主題</span> Theme</h2>
+    <div class="row options themes" id="themes"></div>
   </section>
 
 </aside>
@@ -309,6 +354,14 @@
   var CHARACTERS = ['一', '人', '土', '木', '田', '老', '言', '雨', '風', '夏', '鳥'];
   /** 無 draws nothing, 田 the two centre lines, 米 those plus the diagonals. */
   var GRIDS = ['無', '田', '米'];
+  var THEMES = ['light', 'dark'];
+
+  /** hanzi-writer takes its colours at construction, so they live here rather
+   *  than in the stylesheet and the writer is rebuilt when the theme changes. */
+  var INK = {
+    dark:  { stroke: '#fcd34d', outline: '#5a3a20' },
+    light: { stroke: '#c4b89c', outline: '#e6dfce' }
+  };
 
   var CANVAS_SIZE = 280;
   var LENIENCY = 2.5;
@@ -317,6 +370,7 @@
   var DELAY_BETWEEN_STROKES = 100;
   /** Keeps the guide lines clear of the rounded corners. */
   var GRID_INSET = 8;
+  var THEME_KEY = 'hanzi-writer-demo-theme';
 
   var canvas = document.getElementById('canvas');
   var gridCanvas = document.getElementById('grid');
@@ -324,9 +378,11 @@
   var missingChar = document.getElementById('missing-char');
   var characterList = document.getElementById('characters');
   var gridList = document.getElementById('grids');
+  var themeList = document.getElementById('themes');
 
   var char = CHARACTERS[0];
   var grid = '田';
+  var theme = 'dark';
   var writer = null;
   var strokeCount = 0;
   /** Bumped whenever anything supersedes a running animation, so a stroke
@@ -387,7 +443,10 @@
     var b = CANVAS_SIZE - GRID_INSET;
     var mid = CANVAS_SIZE / 2;
 
-    ctx.strokeStyle = 'rgba(90, 58, 32, 0.8)';
+    // Read from the stylesheet so the guides follow the theme with everything
+    // else rather than keeping their own copy of the palette.
+    ctx.strokeStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue('--grid-line').trim() || 'rgba(90, 58, 32, 0.85)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
@@ -447,6 +506,8 @@
     canvas.style.width = CANVAS_SIZE + 'px';
     canvas.style.height = CANVAS_SIZE + 'px';
 
+    var ink = INK[theme];
+
     writer = HanziWriter.create(createRetinaCanvasProxy(canvas, scale), char, {
       width: CANVAS_SIZE,
       height: CANVAS_SIZE,
@@ -455,10 +516,10 @@
       strokeAnimationSpeed: 1.5,
       delayBetweenStrokes: DELAY_BETWEEN_STROKES,
       showOutline: true,
-      strokeColor: '#fcd34d',
-      radicalColor: '#fcd34d',
-      outlineColor: '#5a3a20',
-      drawingColor: '#fcd34d',
+      strokeColor: ink.stroke,
+      radicalColor: ink.stroke,
+      outlineColor: ink.outline,
+      drawingColor: ink.stroke,
       drawingWidth: 15,
       leniency: LENIENCY,
       acceptBackwardsStrokes: false,
@@ -518,23 +579,47 @@
     });
   }
 
+  /* ── Theme ──────────────────────────────────────────────── */
+
+  function applyTheme(next) {
+    theme = next;
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* file:// or private mode */ }
+    drawGrid();
+    if (writer) build();
+  }
+
+  function initialTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem(THEME_KEY); } catch (e) { /* unavailable */ }
+    if (THEMES.indexOf(saved) !== -1) return saved;
+    var query = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+    return (query && query.matches) ? 'light' : 'dark';
+  }
+
   /* ── Wiring ─────────────────────────────────────────────── */
 
+  /** Returns a refresh function, for when something other than a click on this
+   *  row changes what is selected — the theme restored on load, for instance. */
   function buildRow(container, values, isSelected, onPick, fill) {
+    function refresh() {
+      buttons.forEach(function (button, i) {
+        button.setAttribute('aria-pressed', String(isSelected(values[i])));
+      });
+    }
     var buttons = values.map(function (value) {
       var button = document.createElement('button');
       button.className = 'glyph';
       if (fill) fill(button, value); else button.textContent = value;
-      button.setAttribute('aria-pressed', String(isSelected(value)));
       button.addEventListener('click', function () {
         onPick(value);
-        buttons.forEach(function (other, i) {
-          other.setAttribute('aria-pressed', String(isSelected(values[i])));
-        });
+        refresh();
       });
       container.appendChild(button);
       return button;
     });
+    refresh();
+    return refresh;
   }
 
   /** A miniature of the sheet each option draws — an empty square for 無. */
@@ -550,6 +635,15 @@
          + '<rect x="1" y="1" width="18" height="18" rx="2" />'
          + '<g stroke-dasharray="2 2">' + lines + '</g>'
          + '</svg>';
+  }
+
+  function themeIcon(value) {
+    var shape = value === 'light'
+      ? '<circle cx="12" cy="12" r="4.2" />'
+        + '<path d="M12 2.6v2.2M12 19.2v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6'
+        + 'M2.6 12h2.2M19.2 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" />'
+      : '<path d="M20.5 13.3A8.6 8.6 0 1110.7 3.5a6.7 6.7 0 009.8 9.8z" />';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + shape + '</svg>';
   }
 
   buildRow(
@@ -570,6 +664,18 @@
     }
   );
 
+  var refreshThemes = buildRow(
+    themeList,
+    THEMES,
+    function (value) { return value === theme; },
+    applyTheme,
+    function (button, value) {
+      button.innerHTML = themeIcon(value)
+        + '<span>' + (value === 'light' ? '淺色' : '深色') + '</span>';
+      button.setAttribute('title', value === 'light' ? 'Light' : 'Dark');
+    }
+  );
+
   // hanzi-writer handles the drawing itself; this listener rides alongside it
   // purely to sound the pen touching down.
   canvas.addEventListener('pointerdown', function () {
@@ -579,7 +685,8 @@
   document.getElementById('animate').addEventListener('click', animate);
   document.getElementById('practice').addEventListener('click', practice);
 
-  drawGrid();
+  applyTheme(initialTheme());
+  refreshThemes();
 
   if (typeof HanziWriter === 'undefined') {
     missingChar.textContent = '—';

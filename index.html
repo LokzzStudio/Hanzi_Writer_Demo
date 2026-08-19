@@ -254,12 +254,12 @@
   .disc.quiet {
     fill: url(#fill-quiet);
     stroke: rgba(226, 232, 240, 0.72);
-    stroke-width: 5.4;
+    stroke-width: 3.1;
   }
   .disc.inked {
     fill: url(#fill-ink);
     stroke: #fff6e2;
-    stroke-width: 5.6;
+    stroke-width: 3.3;
   }
   .gloss { pointer-events: none; fill: url(#gloss); }
 
@@ -414,8 +414,8 @@
         <path class="disc quiet" data-disc="8675309" />
         <path class="gloss" />
         <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
-          <polygon points="9.6,7 18,12 9.6,17"
-                   fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round" />
+          <path class="glyph-shape" data-poly="9.6,7 18,12 9.6,17" data-seed="4242"
+                fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round" />
         </g>
       </svg>
     </button>
@@ -424,9 +424,9 @@
         <path class="disc inked" data-disc="3141592" />
         <path class="gloss" />
         <g transform="translate(44 44) scale(1.62) translate(-12 -12)">
-          <line x1="18.4" y1="5.2" x2="13.9" y2="9.7"
-                stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
-          <path d="M10.4 13.2 L13.2 16 L4.2 20.8 Z"
+          <path class="glyph-bow" data-from="18.4,5.2" data-to="13.9,9.7" data-bow="0.5"
+                fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
+          <path class="glyph-shape" data-poly="10.4,13.2 13.2,16 4.2,20.8" data-seed="1357"
                 fill="currentColor" stroke="currentColor" stroke-width="2.2"
                 stroke-linejoin="round" />
         </g>
@@ -681,11 +681,68 @@
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('.disc'), function (disc) {
-    var d = handDrawnDisc(44, 44, 34, 3.8, Number(disc.getAttribute('data-disc')));
+    var d = handDrawnDisc(44, 44, 34, 1.5, Number(disc.getAttribute('data-disc')));
     disc.setAttribute('d', d);
     // The gloss is the same shape, so the highlight is clipped to the disc.
     var gloss = disc.parentNode.querySelector('.gloss');
     if (gloss) gloss.setAttribute('d', d);
+  });
+
+  /** The glyphs are drawn by hand too — the disc around them is nearly true,
+   *  so this is where the wobble has to live if it is going to be felt. Walk
+   *  the polygon by length, push each sample off the edge it sits on, spline. */
+  function handDrawnPolygon(vertices, wobble, seed, steps) {
+    var noise = periodicNoise(mulberry32(seed));
+    var edges = [];
+    var perimeter = 0;
+    for (var i = 0; i < vertices.length; i++) {
+      var from = vertices[i];
+      var to = vertices[(i + 1) % vertices.length];
+      var dx = to[0] - from[0], dy = to[1] - from[1];
+      var length = Math.sqrt(dx * dx + dy * dy);
+      edges.push({ from: from, dx: dx / length, dy: dy / length, length: length });
+      perimeter += length;
+    }
+
+    var points = [];
+    for (var k = 0; k < steps; k++) {
+      var t = k / steps;
+      var walked = t * perimeter;
+      for (var e = 0; e < edges.length; e++) {
+        if (walked <= edges[e].length || e === edges.length - 1) {
+          var edge = edges[e];
+          var along = Math.min(walked, edge.length);
+          var push = wobble * noise(t);
+          points.push([
+            edge.from[0] + edge.dx * along + edge.dy * push,
+            edge.from[1] + edge.dy * along - edge.dx * push
+          ]);
+          break;
+        }
+        walked -= edges[e].length;
+      }
+    }
+    return closedSpline(points);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.glyph-shape'), function (shape) {
+    var vertices = shape.getAttribute('data-poly').split(' ').map(function (pair) {
+      return pair.split(',').map(Number);
+    });
+    shape.setAttribute('d', handDrawnPolygon(vertices, 0.42, Number(shape.getAttribute('data-seed')), 84));
+  });
+
+  /** A straight line drawn freehand bows. */
+  Array.prototype.forEach.call(document.querySelectorAll('.glyph-bow'), function (bow) {
+    var from = bow.getAttribute('data-from').split(',').map(Number);
+    var to = bow.getAttribute('data-to').split(',').map(Number);
+    var amount = Number(bow.getAttribute('data-bow'));
+    var dx = to[0] - from[0], dy = to[1] - from[1];
+    var length = Math.sqrt(dx * dx + dy * dy);
+    var cx = (from[0] + to[0]) / 2 + (dy / length) * amount;
+    var cy = (from[1] + to[1]) / 2 - (dx / length) * amount;
+    bow.setAttribute('d', 'M' + from[0] + ' ' + from[1]
+      + ' Q' + cx.toFixed(2) + ' ' + cy.toFixed(2) + ' ' + to[0] + ' ' + to[1]);
   });
 
   /** One place to read a colour out of the stylesheet. */

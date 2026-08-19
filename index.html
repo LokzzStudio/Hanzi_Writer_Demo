@@ -120,6 +120,42 @@
   .btn svg { width: 16px; height: 16px; }
 
   /* ── Selections ─────────────────────────────────────────── */
+
+  /* The two rows pick different kinds of thing — one changes what you write,
+     the other only how the sheet looks — so each is captioned and ruled off. */
+  .group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .group-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 14px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+  .group-label::before,
+  .group-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .group-label .zh {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #94a3b8;
+  }
+
   .row {
     display: flex;
     flex-wrap: wrap;
@@ -144,24 +180,38 @@
     border-color: rgba(245, 158, 11, 0.6);
   }
 
-  /* The grid choice is a smaller, quieter control so it does not read as a
-     fourteenth character to write. */
+  /* Each grid option carries a picture of the sheet it produces, so it reads
+     as a setting rather than as a twelfth character to write. */
   .grids { gap: 6px; }
 
   .grids .glyph {
-    width: 40px;
-    height: 36px;
-    font-size: 17px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    height: 38px;
+    padding: 0 13px;
+    font-size: 16px;
     color: #64748b;
     background: transparent;
     border-color: var(--line);
   }
   .grids .glyph:hover { color: #cbd5e1; }
   .grids .glyph[aria-pressed="true"] {
-    color: #cbd5e1;
+    color: #e2e8f0;
     background: rgba(90, 58, 32, 0.35);
     border-color: var(--frame);
   }
+
+  .grids svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+  .grids svg rect { opacity: 0.35; }
+  .grids svg line { opacity: 0.85; }
 </style>
 </head>
 
@@ -189,9 +239,15 @@
     </button>
   </div>
 
-  <div class="row" id="characters"></div>
+  <section class="group">
+    <h2 class="group-label"><span class="zh">選字</span> Character to write</h2>
+    <div class="row" id="characters"></div>
+  </section>
 
-  <div class="row grids" id="grids"></div>
+  <section class="group">
+    <h2 class="group-label"><span class="zh">格線</span> Guide lines</h2>
+    <div class="row grids" id="grids"></div>
+  </section>
 
 </main>
 
@@ -397,21 +453,36 @@
 
   /* ── Wiring ─────────────────────────────────────────────── */
 
-  function buildRow(container, values, isSelected, onPick) {
+  function buildRow(container, values, isSelected, onPick, fill) {
     var buttons = values.map(function (value) {
       var button = document.createElement('button');
       button.className = 'glyph';
-      button.textContent = value;
+      if (fill) fill(button, value); else button.textContent = value;
       button.setAttribute('aria-pressed', String(isSelected(value)));
       button.addEventListener('click', function () {
         onPick(value);
-        buttons.forEach(function (other) {
-          other.setAttribute('aria-pressed', String(isSelected(other.textContent)));
+        buttons.forEach(function (other, i) {
+          other.setAttribute('aria-pressed', String(isSelected(values[i])));
         });
       });
       container.appendChild(button);
       return button;
     });
+  }
+
+  /** A miniature of the sheet each option draws — an empty square for 無. */
+  function gridPreview(value) {
+    var lines = '';
+    if (value !== '無') {
+      lines += '<line x1="10" y1="2" x2="10" y2="18" /><line x1="2" y1="10" x2="18" y2="10" />';
+    }
+    if (value === '米') {
+      lines += '<line x1="2.5" y1="2.5" x2="17.5" y2="17.5" /><line x1="17.5" y1="2.5" x2="2.5" y2="17.5" />';
+    }
+    return '<svg viewBox="0 0 20 20" aria-hidden="true">'
+         + '<rect x="1" y="1" width="18" height="18" rx="2" />'
+         + '<g stroke-dasharray="2 2">' + lines + '</g>'
+         + '</svg>';
   }
 
   buildRow(
@@ -425,7 +496,11 @@
     gridList,
     GRIDS,
     function (value) { return value === grid; },
-    function (value) { grid = value; drawGrid(); }
+    function (value) { grid = value; drawGrid(); },
+    function (button, value) {
+      button.innerHTML = gridPreview(value) + '<span>' + value + '</span>';
+      button.setAttribute('title', '格線：' + value);
+    }
   );
 
   // hanzi-writer handles the drawing itself; this listener rides alongside it

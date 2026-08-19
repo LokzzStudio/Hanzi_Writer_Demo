@@ -1,25 +1,29 @@
 # Hanzi Writer — Handwriting Demo
 
-A minimal standalone demo of the Chinese-character writing canvas: pick a
-character, watch its stroke order, then write it yourself against a
-stroke-order quiz.
+A minimal demo of the Chinese-character writing canvas: pick a character, watch
+its stroke order, then write it yourself against a stroke-order quiz, with
+sound on every stroke.
 
-## Run
+## Open it
 
-```bash
-npm install
-npm run dev      # http://localhost:3001
-```
+Double-click `index.html`. That is the whole thing — no install, no build step,
+no server.
 
-```bash
-npm run build    # production bundle into dist/
-npm run preview  # serve the built bundle
-npm run lint     # tsc --noEmit
-```
+To put it online, push the repo and turn on GitHub Pages (Settings → Pages →
+deploy from branch, root folder). The page is then live at
+`https://<user>.github.io/<repo>/`.
+
+An internet connection is needed either way: `hanzi-writer` and its stroke data
+load from a CDN.
+
+## Files
+
+| Path | What it is |
+| --- | --- |
+| `index.html` | The entire demo — markup, styles and script in one file |
+| `sound/` | The four stroke clips |
 
 ## The page
-
-Three things, nothing else:
 
 - **Canvas** — [hanzi-writer](https://hanziwriter.org) on a 280×280 canvas
   renderer behind a retina proxy. *Animate* plays the stroke order, *Practice*
@@ -29,7 +33,15 @@ Three things, nothing else:
   multiplying the error a stroke is allowed on start/end position, shape and
   direction. Stroke *order* is never lenient at any setting.
 
-## Notes
+## Sound
 
-- Stroke data is fetched at runtime from the `hanzi-writer-data` CDN, so the
-  page needs network access.
+| Trigger | Clip |
+| --- | --- |
+| Each stroke of the *Animate* demonstration begins | `brush_stroke` |
+| The pen touches down during a quiz | `brush_stroke` |
+| A correct stroke is completed | `correct_stroke` |
+| A wrong stroke is drawn | `wrong_stroke` |
+| The whole character is finished | `correct_word_abcd` |
+
+Browsers block sound until the page has been clicked, so the first *Animate* or
+*Practice* press is what unlocks it.

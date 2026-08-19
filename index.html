@@ -1,12 +1,424 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hanzi Writer — Handwriting Demo</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hanzi Writer — Handwriting Demo</title>
+
+<style>
+  :root {
+    --bg: #020617;
+    --panel: #0f172a;
+    --panel-soft: rgba(15, 23, 42, 0.6);
+    --line: #1e293b;
+    --line-soft: #334155;
+    --ink: #fcd34d;
+    --paper: #1a1a1a;
+    --frame: #5a3a20;
+    --text: #e2e8f0;
+    --muted: #64748b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  main {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+
+  /* ── Canvas ─────────────────────────────────────────────── */
+  .paper {
+    position: relative;
+    padding: 8px;
+    border: 2px solid var(--frame);
+    border-radius: 16px;
+    background: var(--paper);
+    box-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
+  }
+
+  canvas {
+    display: block;
+    border-radius: 12px;
+    touch-action: none;
+  }
+
+  .load-error {
+    position: absolute;
+    inset: 8px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(2, 6, 23, 0.92);
+    color: #fda4af;
+    font-size: 14px;
+    text-align: center;
+  }
+  .load-error.shown { display: flex; }
+  .load-error b { color: #fff; font-size: 18px; }
+
+  /* ── Buttons ────────────────────────────────────────────── */
+  .controls { display: flex; gap: 8px; }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #cbd5e1;
+    background: var(--panel);
+    border: 1px solid var(--line-soft);
+  }
+  .btn:hover { color: #fff; border-color: #64748b; }
+
+  .btn.primary {
+    font-weight: 700;
+    color: #fcd34d;
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+  .btn.primary:hover { background: rgba(245, 158, 11, 0.25); color: #fef3c7; }
+
+  .btn svg { width: 16px; height: 16px; }
+
+  /* ── Character selection ────────────────────────────────── */
+  .characters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .glyph {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    font-weight: 700;
+    color: #94a3b8;
+    background: var(--panel);
+    border: 1px solid var(--line);
+  }
+  .glyph:hover { color: #fff; border-color: var(--line-soft); }
+  .glyph[aria-pressed="true"] {
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.6);
+  }
+
+  /* ── Leniency ───────────────────────────────────────────── */
+  .leniency {
+    width: 100%;
+    padding: 16px;
+    background: var(--panel-soft);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .leniency-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .leniency-head span:first-child { color: #fcd34d; }
+  .leniency-head output {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 12px;
+    color: #fff;
+  }
+
+  input[type="range"] { width: 100%; accent-color: #f59e0b; }
+
+  .scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+</style>
+</head>
+
+<body>
+<main>
+
+  <div class="paper">
+    <canvas id="canvas" width="280" height="280"></canvas>
+    <div class="load-error" id="load-error">
+      <p>No stroke data for <b id="missing-char"></b>.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="animate">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      Animate
+    </button>
+    <button class="btn primary" id="practice">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+      Practice
+    </button>
+  </div>
+
+  <div class="characters" id="characters"></div>
+
+  <div class="leniency">
+    <div class="leniency-head">
+      <span>Leniency</span>
+      <output id="leniency-value">2.5</output>
+    </div>
+    <input type="range" id="leniency" min="0.2" max="6" step="0.1" value="2.5" />
+    <div class="scale">
+      <span>0.2 strict</span>
+      <span>6.0 gestural</span>
+    </div>
+  </div>
+
+</main>
+
+<!-- Sound. Cloned on play so a clip can overlap its own tail. -->
+<audio id="sfx-brush"        src="sound/magic_scroll_sfx_brush_stroke.wav"      preload="auto"></audio>
+<audio id="sfx-correct"      src="sound/magic_scroll_sfx_correct_stroke.wav"    preload="auto"></audio>
+<audio id="sfx-wrong"        src="sound/magic_scroll_sfx_wrong_stroke.wav"      preload="auto"></audio>
+<audio id="sfx-correct-word" src="sound/magic_scroll_sfx_correct_word_abcd.wav" preload="auto"></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.7.3/dist/hanzi-writer.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var CHARACTERS = ['一', '人', '土', '木', '田', '老', '言', '雨', '風', '夏', '鳥'];
+  var CANVAS_SIZE = 280;
+  /** Matches the writer's own delayBetweenStrokes, since the demonstration
+   *  below is driven one stroke at a time rather than in one call. */
+  var DELAY_BETWEEN_STROKES = 100;
+
+  var canvas = document.getElementById('canvas');
+  var loadError = document.getElementById('load-error');
+  var missingChar = document.getElementById('missing-char');
+  var characterList = document.getElementById('characters');
+  var leniencySlider = document.getElementById('leniency');
+  var leniencyValue = document.getElementById('leniency-value');
+
+  var char = CHARACTERS[0];
+  var leniency = parseFloat(leniencySlider.value);
+  var writer = null;
+  var strokeCount = 0;
+  /** Bumped whenever anything supersedes a running animation, so a stroke
+   *  callback from the previous run cannot queue the next stroke. */
+  var run = 0;
+  /** The brush sound is the player's pen touching down, so it must not fire
+   *  when the canvas is tapped outside a quiz. */
+  var quizActive = false;
+
+  /* ── Sound ──────────────────────────────────────────────── */
+
+  function play(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var clip = el.cloneNode();
+    clip.volume = el.volume;
+    var done = clip.play();
+    if (done && done.catch) done.catch(function () { /* not unlocked yet */ });
+  }
+
+  /* ── Canvas ─────────────────────────────────────────────── */
+
+  /** hanzi-writer sizes the canvas in CSS pixels, so the proxy inflates the
+   *  backing store by DPR and pre-scales the context to keep strokes crisp. */
+  function createRetinaCanvasProxy(target, scale) {
+    return new Proxy(target, {
+      set: function (obj, prop, value) {
+        if (prop === 'width' || prop === 'height') {
+          obj[prop] = value * scale;
+          var ctx = obj.getContext('2d');
+          if (ctx) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(scale, scale);
+          }
+          return true;
+        }
+        obj[prop] = value;
+        return true;
+      },
+      get: function (obj, prop) {
+        if (prop === 'width' || prop === 'height') return obj[prop] / scale;
+        var val = obj[prop];
+        return typeof val === 'function' ? val.bind(obj) : val;
+      }
+    });
+  }
+
+  // Leniency is a construction-time option, so the writer is rebuilt (not
+  // mutated) whenever the character or the slider changes.
+  function build() {
+    run += 1;
+    quizActive = false;
+    strokeCount = 0;
+    loadError.classList.remove('shown');
+
+    if (writer) {
+      try {
+        writer.cancelQuiz();
+        if (writer._renderState && writer._renderState.cancelAll) writer._renderState.cancelAll();
+      } catch (e) { /* the writer is being discarded anyway */ }
+    }
+
+    var ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var scale = window.devicePixelRatio || 1;
+    canvas.style.width = CANVAS_SIZE + 'px';
+    canvas.style.height = CANVAS_SIZE + 'px';
+
+    writer = HanziWriter.create(createRetinaCanvasProxy(canvas, scale), char, {
+      width: CANVAS_SIZE,
+      height: CANVAS_SIZE,
+      padding: 15,
+      renderer: 'canvas',
+      strokeAnimationSpeed: 1.5,
+      delayBetweenStrokes: DELAY_BETWEEN_STROKES,
+      showOutline: true,
+      strokeColor: '#fcd34d',
+      radicalColor: '#fcd34d',
+      outlineColor: '#5a3a20',
+      drawingColor: '#fcd34d',
+      drawingWidth: 15,
+      leniency: leniency,
+      acceptBackwardsStrokes: false,
+      onLoadCharDataError: function () {
+        missingChar.textContent = char;
+        loadError.classList.add('shown');
+      },
+      onLoadCharDataSuccess: function (data) {
+        strokeCount = (data && data.strokes) ? data.strokes.length : 0;
+      }
+    });
+  }
+
+  /** Plays the strokes one at a time so each one can be sounded as it starts —
+   *  animateCharacter runs the whole glyph in a single call with no per-stroke
+   *  hook. hideCharacter first, exactly as animateCharacter does internally,
+   *  which is what clears the previous strokes. */
+  function animate() {
+    if (!writer) return;
+    writer.cancelQuiz();
+    quizActive = false;
+    run += 1;
+    var thisRun = run;
+    if (!strokeCount) return;
+
+    writer.hideCharacter({ duration: 0 });
+
+    var i = 0;
+    (function step() {
+      if (thisRun !== run || i >= strokeCount) return;
+      play('sfx-brush');
+      writer.animateStroke(i, {
+        onComplete: function () {
+          if (thisRun !== run) return;
+          i += 1;
+          window.setTimeout(step, DELAY_BETWEEN_STROKES);
+        }
+      });
+    })();
+  }
+
+  function practice() {
+    if (!writer) return;
+    run += 1;
+    quizActive = true;
+    writer.quiz({
+      onCorrectStroke: function () { play('sfx-correct'); },
+      onMistake: function () { play('sfx-wrong'); },
+      onComplete: function () {
+        quizActive = false;
+        play('sfx-correct-word');
+      }
+    });
+  }
+
+  /* ── Wiring ─────────────────────────────────────────────── */
+
+  CHARACTERS.forEach(function (c) {
+    var button = document.createElement('button');
+    button.className = 'glyph';
+    button.textContent = c;
+    button.setAttribute('aria-pressed', String(c === char));
+    button.addEventListener('click', function () {
+      char = c;
+      var all = characterList.querySelectorAll('.glyph');
+      for (var i = 0; i < all.length; i++) {
+        all[i].setAttribute('aria-pressed', String(all[i].textContent === char));
+      }
+      build();
+    });
+    characterList.appendChild(button);
+  });
+
+  // The readout tracks the drag, but leniency is a construction-time option,
+  // so the writer is only rebuilt once the slider is let go.
+  leniencySlider.addEventListener('input', function () {
+    leniencyValue.textContent = parseFloat(leniencySlider.value).toFixed(1);
+  });
+  leniencySlider.addEventListener('change', function () {
+    leniency = parseFloat(leniencySlider.value);
+    build();
+  });
+
+  // hanzi-writer handles the drawing itself; this listener rides alongside it
+  // purely to sound the pen touching down.
+  canvas.addEventListener('pointerdown', function () {
+    if (quizActive) play('sfx-brush');
+  });
+
+  document.getElementById('animate').addEventListener('click', animate);
+  document.getElementById('practice').addEventListener('click', practice);
+
+  if (typeof HanziWriter === 'undefined') {
+    missingChar.textContent = '—';
+    loadError.querySelector('p').textContent =
+      'Could not load hanzi-writer from the CDN. This page needs an internet connection.';
+    loadError.classList.add('shown');
+    return;
+  }
+
+  build();
+})();
+</script>
+
+</body>
 </html>

@@ -561,9 +561,9 @@
    *  below is driven one stroke at a time rather than in one call. */
   var DELAY_BETWEEN_STROKES = 100;
   /** Shared with the writer, because the finger times itself off it too.
-   *  Lower is slower: the writer divides by it, so 1.2 draws a stroke over the
-   *  1.25x longer it takes at 0.8 of the old pace. */
-  var STROKE_SPEED = 1.2;
+   *  Lower is slower, since the writer divides by it. 1.0 is hanzi-writer's own
+   *  default, and half again as long per stroke as the 1.5 this started at. */
+  var STROKE_SPEED = 1.0;
   /** A beat between the demonstration ending and the canvas going live, so
    *  the last stroke is seen before the sheet clears. */
   var PAUSE_BEFORE_WRITING = 420;

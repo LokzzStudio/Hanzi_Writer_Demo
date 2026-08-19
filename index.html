@@ -21,10 +21,6 @@
 
   body {
     margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 24px 16px;
     background: var(--bg);
     color: var(--text);
@@ -32,13 +28,55 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  main {
-    width: 100%;
-    max-width: 420px;
+  /* Equal flexible columns either side of the sheet, so the sheet sits in the
+     middle of the screen and the panels hang off its right rather than
+     shifting it left. */
+  .layout {
+    min-height: calc(100vh - 48px);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 36px 56px;
+  }
+
+  .stage {
+    grid-column: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 28px;
+    gap: 24px;
+  }
+
+  .panels {
+    grid-column: 3;
+    justify-self: start;
+    width: 328px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+  }
+
+  @media (max-width: 1040px) {
+    .layout {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      /* Stacked, the two rows would otherwise stretch to fill the viewport and
+         open a gap between the sheet and the panels. */
+      align-content: center;
+    }
+    .stage, .panels { grid-column: 1; }
+    .panels {
+      justify-self: center;
+      width: 100%;
+      max-width: 420px;
+    }
+    .row { justify-content: center; }
+    .group-label::before {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
   }
 
   /* ── Canvas ─────────────────────────────────────────────── */
@@ -127,7 +165,6 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center;
   }
 
   .group-label {
@@ -142,7 +179,6 @@
     text-transform: uppercase;
     color: #475569;
   }
-  .group-label::before,
   .group-label::after {
     content: "";
     flex: 1;
@@ -159,7 +195,6 @@
   .row {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
     gap: 8px;
     width: 100%;
   }
@@ -216,7 +251,9 @@
 </head>
 
 <body>
-<main>
+<div class="layout">
+
+<div class="stage">
 
   <div class="paper">
     <div class="sheet">
@@ -239,6 +276,10 @@
     </button>
   </div>
 
+</div>
+
+<aside class="panels">
+
   <section class="group">
     <h2 class="group-label"><span class="zh">選字</span> Character to write</h2>
     <div class="row" id="characters"></div>
@@ -249,7 +290,9 @@
     <div class="row grids" id="grids"></div>
   </section>
 
-</main>
+</aside>
+
+</div>
 
 <!-- Sound. Cloned on play so a clip can overlap its own tail. -->
 <audio id="sfx-brush"        src="sound/magic_scroll_sfx_brush_stroke.wav"      preload="auto"></audio>

@@ -218,6 +218,45 @@
   .load-error.shown { display: flex; }
   .load-error b { color: var(--error-strong); font-size: 18px; }
 
+  /* ── Stroke start hint ───────────────────────────────────── */
+
+  .stroke-hint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  #hint-group .hint-ripple {
+    fill: var(--ink);
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: hint-ripple 2.1s cubic-bezier(0.15, 0, 0.3, 1) infinite;
+  }
+  #hint-group .hint-ripple:nth-child(2) { animation-delay: 0.7s; }
+  #hint-group .hint-ripple:nth-child(3) { animation-delay: 1.4s; }
+
+  @keyframes hint-ripple {
+    0%   { transform: scale(1);   opacity: 0.3; }
+    80%  { opacity: 0; }
+    100% { transform: scale(3.2); opacity: 0; }
+  }
+
+  #hint-group .hint-glow  { fill: var(--ink); opacity: 0.18; }
+  #hint-group .hint-inner { fill: var(--ink); opacity: 0.28; }
+  #hint-group .hint-dot   { fill: var(--ink); opacity: 0.75; }
+
+  #hint-group .hint-arrow line {
+    stroke: var(--ink);
+    opacity: 0.85;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+  }
+  #hint-group .hint-arrow polygon {
+    fill: var(--ink);
+    opacity: 0.85;
+  }
+
   /* ── Buttons ────────────────────────────────────────────── */
 
   /* Big, round and springy — the whole page is aimed at small hands. */
@@ -390,6 +429,20 @@
       <div class="sheet">
         <canvas id="grid" width="280" height="280"></canvas>
         <canvas id="canvas" width="280" height="280"></canvas>
+        <svg id="stroke-hint" class="stroke-hint" width="280" height="280" viewBox="0 0 280 280" aria-hidden="true">
+          <g id="hint-group" display="none">
+            <circle class="hint-ripple" r="10" />
+            <circle class="hint-ripple" r="10" />
+            <circle class="hint-ripple" r="10" />
+            <circle class="hint-glow" r="14" />
+            <circle class="hint-inner" r="8" />
+            <circle class="hint-dot" r="3.5" />
+            <g id="hint-arrow" class="hint-arrow">
+              <line x1="7" y1="0" x2="24" y2="0" />
+              <polygon points="21,-3 27,0 21,3" />
+            </g>
+          </g>
+        </svg>
         <div class="load-error" id="load-error">
           <p>No stroke data for <b id="missing-char"></b>.</p>
         </div>
@@ -463,6 +516,8 @@
   /** A beat between the demonstration ending and the canvas going live, so
    *  the last stroke is seen before the sheet clears. */
   var PAUSE_BEFORE_WRITING = 420;
+  /** How far along the spine to look before trusting a direction. */
+  var HINT_AIM_DISTANCE = 12;
   /** Keeps the guide lines clear of the rounded corners. */
   var GRID_INSET = 8;
   var THEME_KEY = 'hanzi-writer-demo-theme';
@@ -474,12 +529,15 @@
   var characterList = document.getElementById('characters');
   var gridList = document.getElementById('grids');
   var themeList = document.getElementById('themes');
+  var hintGroup = document.getElementById('hint-group');
+  var hintArrow = document.getElementById('hint-arrow');
 
   var char = CHARACTERS[0];
   var grid = '米';
   var theme = 'dark';
   var writer = null;
   var strokeCount = 0;
+  var charData = null;
   /** Bumped whenever anything supersedes a running animation, so a stroke
    *  callback from the previous run cannot queue the next stroke. */
   var run = 0;
@@ -770,6 +828,59 @@
     ctx.stroke();
   }
 
+  /* ── Stroke start hint ──────────────────────────────────── */
+
+  /** The stroke's spine, in character coordinates. getCharacterData gives a
+   *  PARSED character — strokes carrying their own points — not the raw JSON,
+   *  so there is no `medians` on it to read. */
+  function strokeSpine(strokeNum) {
+    if (!charData || !charData.strokes) return null;
+    var stroke = charData.strokes[strokeNum];
+    return (stroke && stroke.points && stroke.points.length >= 2) ? stroke.points : null;
+  }
+
+  /** Character coordinates are not the 0..1024 box they look like: the glyph
+   *  runs from y = -124 upward and y grows the other way, and the writer
+   *  centres it inside the padding. Its own positioner holds the numbers that
+   *  resolve all of that, so they are read rather than guessed at. */
+  function charToCanvas(point) {
+    var p = writer && writer._positioner;
+    if (!p) return null;
+    return {
+      x: point.x * p.scale + p.xOffset,
+      y: p.height - p.yOffset - point.y * p.scale
+    };
+  }
+
+  function showHint(strokeNum) {
+    var spine = strokeSpine(strokeNum);
+    var start = spine && charToCanvas(spine[0]);
+    if (!start) { hideHint(); return; }
+
+    // Aim at the first point that is actually somewhere else — the spine
+    // often starts with a couple of samples nearly on top of each other, and
+    // those give a direction that is pure noise.
+    var aim = null;
+    for (var i = 1; i < spine.length; i++) {
+      var candidate = charToCanvas(spine[i]);
+      var dx = candidate.x - start.x;
+      var dy = candidate.y - start.y;
+      if (dx * dx + dy * dy >= HINT_AIM_DISTANCE * HINT_AIM_DISTANCE) { aim = candidate; break; }
+      aim = candidate;
+    }
+    if (!aim) { hideHint(); return; }
+
+    var angle = Math.atan2(aim.y - start.y, aim.x - start.x) * 180 / Math.PI;
+    hintGroup.setAttribute('transform',
+      'translate(' + start.x.toFixed(1) + ',' + start.y.toFixed(1) + ')');
+    hintArrow.setAttribute('transform', 'rotate(' + angle.toFixed(1) + ')');
+    hintGroup.removeAttribute('display');
+  }
+
+  function hideHint() {
+    hintGroup.setAttribute('display', 'none');
+  }
+
   /* ── Canvas ─────────────────────────────────────────────── */
 
   /** hanzi-writer sizes the canvas in CSS pixels, so the proxy inflates the
@@ -801,6 +912,8 @@
     run += 1;
     quizActive = false;
     strokeCount = 0;
+    charData = null;
+    hideHint();
     loadError.classList.remove('shown');
 
     if (writer) {
@@ -850,6 +963,7 @@
     var forBuild = run;
     writer.getCharacterData().then(function (data) {
       if (forBuild !== run) return;
+      charData = data;
       strokeCount = (data && data.strokes) ? data.strokes.length : 0;
       animate();
     }).catch(function () { /* onLoadCharDataError has the message */ });
@@ -863,6 +977,7 @@
     if (!writer) return;
     writer.cancelQuiz();
     quizActive = false;
+    hideHint();
     run += 1;
     var thisRun = run;
     if (!strokeCount) return;
@@ -893,15 +1008,25 @@
     if (!writer) return;
     run += 1;
     quizActive = true;
+    showHint(0);
     writer.quiz({
       // The stroke number rather than a running count, so a mistake never
       // advances the scale and a resumed quiz picks the note back up.
       onCorrectStroke: function (data) {
         play('sfx-correct', noteRate(data ? data.strokeNum : 0));
+        if (data && data.strokesRemaining > 0) {
+          showHint(data.strokeNum + 1);
+        } else {
+          hideHint();
+        }
       },
-      onMistake: function () { play('sfx-wrong'); },
+      onMistake: function (data) {
+        play('sfx-wrong');
+        if (data) showHint(data.strokeNum);
+      },
       onComplete: function () {
         quizActive = false;
+        hideHint();
         play('sfx-correct-word');
       }
     });
@@ -1007,7 +1132,10 @@
   // hanzi-writer handles the drawing itself; this listener rides alongside it
   // purely to sound the pen touching down.
   canvas.addEventListener('pointerdown', function () {
-    if (quizActive) play('sfx-brush');
+    if (quizActive) {
+      play('sfx-brush');
+      hideHint();
+    }
   });
 
   document.getElementById('animate').addEventListener('click', animate);

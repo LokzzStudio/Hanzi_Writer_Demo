@@ -10,9 +10,9 @@
      back to the system stack below with nothing else to change. */
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap');
 
-  /* The page keeps its dark ground in both themes, so text sitting ON that
-     ground and text sitting ON a button need separate tokens — one set has to
-     stay light while the other flips dark on a cream surface. */
+  /* The desk stays dark in both themes — the panel is a toolbox, and a toolbox
+     should recede so the sheet is the lit thing. Ground tokens and surface
+     tokens are kept apart because they answer to different backdrops. */
   :root {
     color-scheme: dark;
 
@@ -33,49 +33,46 @@
     --on-surface-quiet: #64748b;
     --on-surface-hover: #ffffff;
 
-    /* the sheet */
+    /* the sheet, and the ink written on it */
+    --ink: #fcd34d;
+    --ink-rgb: 252, 211, 77;
+    --ink-outline: #5a3a20;
+    --accent-bright: #fef3c7;
     --paper: #242424;
     --band: #0e0d0c;
     --frame: #7a5433;
     --grid-line: rgba(90, 58, 32, 0.85);
-    --paper-shadow: 0 0 30px rgba(252, 211, 77, 0.08);
-
-    /* what a chosen thing is marked in */
-    --accent: #fcd34d;
-    --accent-bright: #fef3c7;
-    --accent-bg: rgba(245, 158, 11, 0.15);
-    --accent-bg-hover: rgba(245, 158, 11, 0.25);
-    --accent-bg-strong: rgba(245, 158, 11, 0.2);
-    --accent-border: rgba(245, 158, 11, 0.4);
-    --accent-border-strong: rgba(245, 158, 11, 0.6);
-    --option-bg: rgba(90, 58, 32, 0.35);
-    --option-border: #7a5433;
+    --paper-shadow: 0 0 30px rgba(var(--ink-rgb), 0.08);
 
     --scrim: rgba(2, 6, 23, 0.92);
     --error: #fda4af;
     --error-strong: #ffffff;
   }
 
-  /* The desk stays dark in both themes — the panel is the toolbox, and a
-     toolbox should recede. What the theme changes is the sheet you are writing
-     on, and the colour a chosen thing is marked in, which is drawn from that
-     sheet: gold ink on the dark one, the red of a seal on the ivory. */
+  /* A chosen thing is marked in the ink of the sheet — so this is written once,
+     against --ink, and each theme only has to say what its ink is. */
+  :root {
+    --accent: var(--ink);
+    --accent-bg: rgba(var(--ink-rgb), 0.15);
+    --accent-bg-hover: rgba(var(--ink-rgb), 0.26);
+    --accent-bg-strong: rgba(var(--ink-rgb), 0.2);
+    --accent-border: rgba(var(--ink-rgb), 0.42);
+    --accent-border-strong: rgba(var(--ink-rgb), 0.62);
+    --option-bg: rgba(var(--ink-rgb), 0.14);
+    --option-border: rgba(var(--ink-rgb), 0.5);
+  }
+
+  /* Ivory paper, taupe ink — and the buttons follow, because everything above
+     is written against --ink. */
   [data-theme="light"] {
+    --ink: #c4b89c;
+    --ink-rgb: 196, 184, 156;
+    --ink-outline: #e6dfce;
     --paper: #faf7ec;
     --band: #1c1a17;
     --frame: #cec6b6;
     --grid-line: rgba(201, 180, 160, 0.95);
-    --paper-shadow: 0 0 34px rgba(252, 250, 241, 0.10);
-
-    --accent: #f0765c;
-    --accent-bright: #ffbcac;
-    --accent-bg: rgba(224, 92, 63, 0.16);
-    --accent-bg-hover: rgba(224, 92, 63, 0.26);
-    --accent-bg-strong: rgba(224, 92, 63, 0.2);
-    --accent-border: rgba(224, 92, 63, 0.45);
-    --accent-border-strong: rgba(224, 92, 63, 0.65);
-    --option-bg: rgba(224, 92, 63, 0.14);
-    --option-border: #9c4c39;
+    --accent-bright: #e8dfc9;
 
     --scrim: rgba(252, 250, 241, 0.94);
     --error: #a33b4c;
@@ -423,13 +420,6 @@
   var GRIDS = ['無', '田', '米'];
   var THEMES = ['light', 'dark'];
 
-  /** hanzi-writer takes its colours at construction, so they live here rather
-   *  than in the stylesheet and the writer is rebuilt when the theme changes. */
-  var INK = {
-    dark:  { stroke: '#fcd34d', outline: '#5a3a20' },
-    light: { stroke: '#c4b89c', outline: '#e6dfce' }
-  };
-
   var CANVAS_SIZE = 280;
   var LENIENCY = 2.5;
   /** Matches the writer's own delayBetweenStrokes, since the demonstration
@@ -606,6 +596,12 @@
   document.getElementById('frame-path')
     .setAttribute('d', handDrawnLoop(11, 319, 4.6, 6180339));
 
+  /** One place to read a colour out of the stylesheet. */
+  function token(name, fallback) {
+    var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  }
+
   /* ── Guide lines ────────────────────────────────────────── */
 
   function drawGrid() {
@@ -628,8 +624,7 @@
 
     // Read from the stylesheet so the guides follow the theme with everything
     // else rather than keeping their own copy of the palette.
-    ctx.strokeStyle = getComputedStyle(document.documentElement)
-      .getPropertyValue('--grid-line').trim() || 'rgba(90, 58, 32, 0.85)';
+    ctx.strokeStyle = token('--grid-line', 'rgba(90, 58, 32, 0.85)');
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
@@ -689,7 +684,10 @@
     canvas.style.width = CANVAS_SIZE + 'px';
     canvas.style.height = CANVAS_SIZE + 'px';
 
-    var ink = INK[theme];
+    // hanzi-writer takes its colours at construction, so they are read from
+    // the stylesheet here — the same --ink the selected buttons are marked in.
+    var ink = token('--ink', '#fcd34d');
+    var inkOutline = token('--ink-outline', '#5a3a20');
 
     writer = HanziWriter.create(createRetinaCanvasProxy(canvas, scale), char, {
       width: CANVAS_SIZE,
@@ -699,10 +697,10 @@
       strokeAnimationSpeed: 1.5,
       delayBetweenStrokes: DELAY_BETWEEN_STROKES,
       showOutline: true,
-      strokeColor: ink.stroke,
-      radicalColor: ink.stroke,
-      outlineColor: ink.outline,
-      drawingColor: ink.stroke,
+      strokeColor: ink,
+      radicalColor: ink,
+      outlineColor: inkOutline,
+      drawingColor: ink,
       drawingWidth: 15,
       leniency: LENIENCY,
       acceptBackwardsStrokes: false,

@@ -32,9 +32,12 @@ load from a CDN.
 - **Grid** — 無 none, 田 the two centre lines, 米 those plus the diagonals.
 - **Theme** — which sheet you write on: 淺色 ivory paper with taupe ink, 深色
   a dark one with gold. The desk around it stays dark either way, and a chosen
-  thing is marked in the colour that belongs to the sheet — gold on the dark,
-  the red of a seal on the ivory. The choice is remembered, and defaults to
-  the system preference.
+  button is marked in the ink of the sheet — the same colour the strokes are
+  written in. The choice is remembered, and defaults to the system preference.
+
+  That is one value, not a pair that happen to agree:  sets the accent
+  in CSS, and the writer reads the same token for its stroke colour, so a
+  theme only has to say what its ink is.
 
 ## Sound
 

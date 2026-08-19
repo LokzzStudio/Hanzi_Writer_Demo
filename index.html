@@ -274,6 +274,26 @@
     #hint-group.is-live .hint-dot { animation: none; }
   }
 
+  /* The finger that writes the demonstration. Skin against an outline so it
+     reads on the dark sheet and the ivory one alike. */
+  .hint-finger { filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5)); }
+  .hint-finger .finger-edge {
+    fill: none;
+    stroke: #6f5136;
+    stroke-width: 14.5;
+    stroke-linecap: round;
+  }
+  .hint-finger .finger-thumb { stroke-width: 12.5; }
+  .hint-finger .finger-thumb-skin { stroke-width: 9; }
+  .hint-finger .finger-edge-fist { fill: #6f5136; }
+  .hint-finger .finger-skin {
+    fill: none;
+    stroke: #f2d2ab;
+    stroke-width: 10.5;
+    stroke-linecap: round;
+  }
+  .hint-finger .finger-fist { fill: #f2d2ab; }
+
   /* ── Buttons ────────────────────────────────────────────── */
 
   /* Big, round and springy — the whole page is aimed at small hands. */
@@ -453,6 +473,22 @@
             <circle class="hint-glow" r="12" />
             <circle class="hint-dot" r="4" />
           </g>
+          <!-- The fingertip sits on the group origin, so translating the
+               group puts the pad exactly where the ink is emerging. Each
+               part is drawn twice, dark and wide first, to outline it. -->
+          <g id="hint-finger" class="hint-finger" display="none">
+            <!-- Nudged off the origin so the ink emerging stays visible at the
+                 upper edge of the pad instead of hiding under it. Outline pass
+                 first, then skin, so finger and fist merge into one hand. -->
+            <g transform="translate(3 3)">
+              <rect class="finger-edge-fist" x="3.2" y="13.2" width="37.6" height="31.6" rx="11.4" />
+              <line class="finger-edge" x1="0" y1="0" x2="11" y2="17" />
+              <line class="finger-edge finger-thumb" x1="9" y1="31" x2="0.5" y2="26" />
+              <rect class="finger-fist" x="5" y="15" width="34" height="28" rx="9.6" />
+              <line class="finger-skin" x1="0" y1="0" x2="11" y2="17" />
+              <line class="finger-skin finger-thumb-skin" x1="9" y1="31" x2="0.5" y2="26" />
+            </g>
+          </g>
         </svg>
         <div class="load-error" id="load-error">
           <p>No stroke data for <b id="missing-char"></b>.</p>
@@ -524,6 +560,8 @@
   /** Matches the writer's own delayBetweenStrokes, since the demonstration
    *  below is driven one stroke at a time rather than in one call. */
   var DELAY_BETWEEN_STROKES = 100;
+  /** Shared with the writer, because the finger times itself off it too. */
+  var STROKE_SPEED = 1.5;
   /** A beat between the demonstration ending and the canvas going live, so
    *  the last stroke is seen before the sheet clears. */
   var PAUSE_BEFORE_WRITING = 420;
@@ -539,6 +577,8 @@
   var gridList = document.getElementById('grids');
   var themeList = document.getElementById('themes');
   var hintGroup = document.getElementById('hint-group');
+  var hintFinger = document.getElementById('hint-finger');
+  var fingerFrame = null;
 
   var char = CHARACTERS[0];
   var grid = '米';
@@ -880,6 +920,72 @@
     hintGroup.setAttribute('display', 'none');
   }
 
+  /** The stroke's spine in canvas coordinates, carrying cumulative lengths so
+   *  a point can be found at any fraction along it. */
+  function strokeTrack(strokeNum) {
+    var spine = strokeSpine(strokeNum);
+    if (!spine) return null;
+    var points = [];
+    for (var i = 0; i < spine.length; i++) {
+      var point = charToCanvas(spine[i]);
+      if (!point) return null;
+      points.push(point);
+    }
+    var lengths = [0];
+    for (var j = 1; j < points.length; j++) {
+      var dx = points[j].x - points[j - 1].x;
+      var dy = points[j].y - points[j - 1].y;
+      lengths.push(lengths[j - 1] + Math.sqrt(dx * dx + dy * dy));
+    }
+    return { points: points, lengths: lengths, total: lengths[lengths.length - 1] };
+  }
+
+  function pointAlong(track, fraction) {
+    var target = fraction * track.total;
+    for (var i = 1; i < track.lengths.length; i++) {
+      if (track.lengths[i] >= target) {
+        var span = track.lengths[i] - track.lengths[i - 1] || 1;
+        var t = (target - track.lengths[i - 1]) / span;
+        var a = track.points[i - 1], b = track.points[i];
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      }
+    }
+    return track.points[track.points.length - 1];
+  }
+
+  /** hanzi-writer times each stroke from its own length and eases it with a
+   *  half-cosine. The finger borrows both, so it rides the tip of the ink
+   *  rather than drifting ahead of it or trailing behind. */
+  function traceFinger(strokeNum) {
+    stopFinger();
+    var track = strokeTrack(strokeNum);
+    var stroke = charData && charData.strokes && charData.strokes[strokeNum];
+    if (!track || !track.total || !stroke || !stroke.getLength) return;
+
+    var duration = (stroke.getLength() + 600) / (3 * STROKE_SPEED);
+    var started = null;
+    hintFinger.removeAttribute('display');
+
+    fingerFrame = requestAnimationFrame(function frame(now) {
+      if (started === null) started = now;
+      var progress = Math.min(1, (now - started) / duration);
+      var eased = -Math.cos(progress * Math.PI) / 2 + 0.5;
+      var at = pointAlong(track, eased);
+      hintFinger.setAttribute('transform',
+        'translate(' + at.x.toFixed(1) + ',' + at.y.toFixed(1) + ')');
+      fingerFrame = progress < 1 ? requestAnimationFrame(frame) : null;
+    });
+  }
+
+  function stopFinger() {
+    if (fingerFrame) { cancelAnimationFrame(fingerFrame); fingerFrame = null; }
+  }
+
+  function hideFinger() {
+    stopFinger();
+    hintFinger.setAttribute('display', 'none');
+  }
+
   /* ── Canvas ─────────────────────────────────────────────── */
 
   /** hanzi-writer sizes the canvas in CSS pixels, so the proxy inflates the
@@ -913,6 +1019,7 @@
     strokeCount = 0;
     charData = null;
     hideHint();
+    hideFinger();
     loadError.classList.remove('shown');
 
     if (writer) {
@@ -939,7 +1046,7 @@
       height: CANVAS_SIZE,
       padding: 15,
       renderer: 'canvas',
-      strokeAnimationSpeed: 1.5,
+      strokeAnimationSpeed: STROKE_SPEED,
       delayBetweenStrokes: DELAY_BETWEEN_STROKES,
       showOutline: true,
       strokeColor: ink,
@@ -977,6 +1084,7 @@
     writer.cancelQuiz();
     quizActive = false;
     hideHint();
+    hideFinger();
     run += 1;
     var thisRun = run;
     if (!strokeCount) return;
@@ -989,10 +1097,12 @@
       if (i >= strokeCount) {
         // The demonstration is over, so it is the writer's turn — this is the
         // only way writing starts, since there is no button for it.
+        hideFinger();
         window.setTimeout(function () { if (thisRun === run) practice(); }, PAUSE_BEFORE_WRITING);
         return;
       }
       play('sfx-brush');
+      traceFinger(i);
       writer.animateStroke(i, {
         onComplete: function () {
           if (thisRun !== run) return;
@@ -1007,6 +1117,7 @@
     if (!writer) return;
     run += 1;
     quizActive = true;
+    hideFinger();
     showHint(0);
     writer.quiz({
       // The stroke number rather than a running count, so a mistake never

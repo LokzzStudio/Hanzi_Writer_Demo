@@ -537,6 +537,11 @@
   </section>
 
   <section class="group">
+    <h2 class="group-label"><span class="zh">音色</span> Stroke sound</h2>
+    <div class="row options sounds" id="sounds"></div>
+  </section>
+
+  <section class="group">
     <h2 class="group-label"><span class="zh">主題</span> Theme</h2>
     <div class="row options themes" id="themes"></div>
   </section>
@@ -551,7 +556,9 @@
 
 <!-- Sound. Cloned on play so a clip can overlap its own tail. -->
 <audio id="sfx-brush"        src="sound/magic_scroll_sfx_brush_stroke.wav"      preload="auto"></audio>
-<audio id="sfx-correct"      src="sound/magic_scroll_sfx_correct_stroke.wav"    preload="auto"></audio>
+<audio id="sfx-correct-1"    src="sound/magic_scroll_sfx_correct_stroke_option1.wav" preload="auto"></audio>
+<audio id="sfx-correct-2"    src="sound/magic_scroll_sfx_correct_stroke_option2.wav" preload="auto"></audio>
+<audio id="sfx-correct-3"    src="sound/magic_scroll_sfx_correct_stroke_option3.wav" preload="auto"></audio>
 <audio id="sfx-wrong"        src="sound/magic_scroll_sfx_wrong_stroke.wav"      preload="auto"></audio>
 <audio id="sfx-correct-word" src="sound/magic_scroll_sfx_correct_word_abcd.wav" preload="auto"></audio>
 
@@ -562,6 +569,8 @@
   'use strict';
 
   var CHARACTERS = ['一', '人', '土', '木', '田', '老', '言', '雨', '風', '夏', '鳥'];
+  /** Three takes on the note a correct stroke answers with, to choose between. */
+  var SOUNDS = ['1', '2', '3'];
   /** 無 draws nothing, 田 the two centre lines, 米 those plus the diagonals. */
   var GRIDS = ['無', '田', '米'];
   var THEMES = ['light', 'dark'];
@@ -581,6 +590,7 @@
   /** Keeps the guide lines clear of the rounded corners. */
   var GRID_INSET = 8;
   var THEME_KEY = 'hanzi-writer-demo-theme';
+  var SOUND_KEY = 'hanzi-writer-demo-stroke-sound';
 
   var canvas = document.getElementById('canvas');
   var gridCanvas = document.getElementById('grid');
@@ -589,6 +599,7 @@
   var characterList = document.getElementById('characters');
   var gridList = document.getElementById('grids');
   var themeList = document.getElementById('themes');
+  var soundList = document.getElementById('sounds');
   var sheet = document.querySelector('.sheet');
   var hintGroup = document.getElementById('hint-group');
   var hintFinger = document.getElementById('hint-finger');
@@ -597,6 +608,7 @@
   var char = CHARACTERS[0];
   var grid = '米';
   var theme = 'dark';
+  var strokeSound = '1';
   var writer = null;
   var strokeCount = 0;
   var charData = null;
@@ -1393,7 +1405,7 @@
       // The stroke number rather than a running count, so a mistake never
       // advances the scale and a resumed quiz picks the note back up.
       onCorrectStroke: function (data) {
-        play('sfx-correct', noteRate(data ? data.strokeNum : 0));
+        play('sfx-correct-' + strokeSound, noteRate(data ? data.strokeNum : 0));
         if (data && data.strokesRemaining > 0) {
           showHint(data.strokeNum + 1);
         } else {
@@ -1498,6 +1510,34 @@
     }
   );
 
+  /** A speaker with as many waves as the option's number. */
+  function soundIcon(value) {
+    var waves = '';
+    for (var i = 0; i < Number(value); i++) {
+      var r = 3.2 + i * 3;
+      waves += '<path d="M14.4 ' + (12 - r * 0.72).toFixed(1) + ' a' + r.toFixed(1)
+        + ' ' + r.toFixed(1) + ' 0 0 1 0 ' + (r * 1.44).toFixed(1) + '" />';
+    }
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">'
+         + '<path d="M4.5 9.3h3.3L11.8 6v12L7.8 14.7H4.5z" />' + waves + '</svg>';
+  }
+
+  var refreshSounds = buildRow(
+    soundList,
+    SOUNDS,
+    function (value) { return value === strokeSound; },
+    function (value) {
+      strokeSound = value;
+      try { localStorage.setItem(SOUND_KEY, value); } catch (e) { /* file:// or private mode */ }
+      // Play it on the tonic: choosing between three sounds means hearing them.
+      play('sfx-correct-' + value, 1);
+    },
+    function (button, value) {
+      button.innerHTML = soundIcon(value) + '<span>' + value + '</span>';
+      button.setAttribute('title', '音色 ' + value);
+    }
+  );
+
   var refreshThemes = buildRow(
     themeList,
     THEMES,
@@ -1518,6 +1558,12 @@
   });
 
   document.getElementById('animate').addEventListener('click', animate);
+
+  try {
+    var savedSound = localStorage.getItem(SOUND_KEY);
+    if (SOUNDS.indexOf(savedSound) !== -1) strokeSound = savedSound;
+  } catch (e) { /* unavailable */ }
+  refreshSounds();
 
   applyTheme(initialTheme());
   refreshThemes();

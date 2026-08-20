@@ -1004,32 +1004,10 @@
 
   /* ── Magical ink ────────────────────────────────────────── */
 
-  /* Built after reading how suminagashi.miraicode.one does it. That page runs a
-     full Navier-Stokes solver in WebGL — advect, divergence, 28 Jacobi pressure
-     iterations, curl, vorticity confinement. This is canvas 2D and will not be
-     that, but three of its ideas carry over and are most of why its ink looks
-     alive:
-
-       ADVECTION, not blur. Blur only ever moves toward mush. Transporting the
-       dye along a velocity field stretches it into filaments, which is the
-       thing that reads as ink in water. Done here semi-Lagrangian at tile
-       granularity: each tile of the previous frame is redrawn from wherever
-       the flow says it came from.
-
-       VORTICITY CONFINEMENT. Any solver smears out its own small eddies. That
-       term finds the local curl and pushes it back in, which is why their
-       swirls keep curling instead of settling. Cheap on a coarse grid.
-
-       FORCE AT THE POINTER, not attraction. Theirs splats velocity along the
-       pointer's delta — 画面をなぞって墨を流す, trace the screen to make the ink
-       flow. Being shoved reads completely differently from being followed.
-
-     Their clear is 洗い流す, "wash away" — dissipation ramped up so it drains
-     rather than dimming — and the palette is named pigments rather than a
-     wheel. Both are taken too. */
-
+  /** Where the swarm gathers. Null until the pointer has been somewhere, so a
+   *  touch screen that has never hovered still gets the ink, around the sheet
+   *  it came out of. */
   var pointer = { x: null, y: null };
-  var pointerWas = { x: null, y: null };
   window.addEventListener('pointermove', function (event) {
     pointer.x = event.clientX;
     pointer.y = event.clientY;
@@ -1041,46 +1019,34 @@
   var spillDrops = [];
 
   var SPILL_LIFE = 5000;     // start to gone
-  var SPILL_BURST = 700;     // how long it flies free before the flow has it
+  var SPILL_BURST = 700;     // how long it flies free before it is drawn in
   var SPILL_DROPS = 150;
-  var WASH_AT = 0.62;        // fraction of the life where 洗い流す begins
 
+  /* Ink in water is not a set of marks, it is a volume that keeps spreading, so
+     nothing here is drawn straight to the screen. Every frame the previous one
+     is laid down again very slightly larger and slightly fainter, which IS the
+     diffusion — edges creep outward and soften on their own — and fresh ink is
+     added on top. Two buffers ping-pong because a canvas cannot cleanly draw
+     itself. Working at part resolution and blitting up costs nothing and buys
+     one more pass of smoothing, which is the opposite of the halftone dots. */
   var BUFFER_SCALE = 0.55;
-  var DECAY = 0.968;         // dye kept per frame while the ink is running
-  var WASH_DECAY = 0.90;     // and once it is being washed away
-
-  /* ── the flow field ── */
-  var FLOW_COLS = 26;
-  var FLOW_ROWS = 15;
-  var FLOW_CELLS = FLOW_COLS * FLOW_ROWS;
-  var flowVX = new Float32Array(FLOW_CELLS);
-  var flowVY = new Float32Array(FLOW_CELLS);
-  var flowCurl = new Float32Array(FLOW_CELLS);
-  var FLOW_DECAY = 0.965;
-  var CURL_STRENGTH = 1.5;   // their CURL: 14, scaled to this grid
-  var SPLAT_FORCE = 0.14;    // pointer delta -> velocity
-  /** Everything is clamped to this. A hand can cross 60px in a frame, and
-   *  unclamped that advects the dye further than a tile is wide, which does
-   *  not look like fast water — it shreds the buffer. */
-  var MAX_FLOW = 4;
-  var SPLAT_CELLS = 3.2;     // how far the splat reaches, in cells
-  var ADVECT = 0.62;         // how hard the dye is dragged by the flow
-
-  var TILE_COLS = 24;
-  var TILE_ROWS = 14;
+  /* Spreading is a five-tap blur, not a scale-up: scaling zooms the whole
+     buffer about its centre, which drags the ink bodily across the screen
+     instead of letting it bleed where it actually is. */
+  var BLUR_TAPS = [0, 0, 0.36,  1.3, 0, 0.16,  -1.3, 0, 0.16,  0, 1.3, 0.16,  0, -1.3, 0.16];
+  var DECAY = 0.973;         // what it gives up on the way
+  var HUE_STEPS = 24;        // ink sprites are cached per hue
 
   var inkFront = document.createElement('canvas');
   var inkBack = document.createElement('canvas');
   var inkFrontCtx = inkFront.getContext('2d');
   var inkBackCtx = inkBack.getContext('2d');
 
-  /** 藍 indigo, 紅 crimson, 松葉 pine needle — the pigments that page names,
-   *  lifted enough to read on a dark ground. A wheel would only be a smear. */
-  var PIGMENTS = [212, 348, 128];
-  var HUE_STEPS = 24;
+  /** A soft cloud, cached per hue. Tinting at draw time would cost a composite
+   *  pass per particle per frame; this costs one canvas per hue, once. */
   var inkSprites = {};
   function inkSprite(hue) {
-    var key = ((Math.round(hue / (360 / HUE_STEPS)) % HUE_STEPS) + HUE_STEPS) % HUE_STEPS;
+    var key = Math.round(hue / (360 / HUE_STEPS)) % HUE_STEPS;
     if (inkSprites[key]) return inkSprites[key];
     var shade = key * (360 / HUE_STEPS);
     var size = 128;
@@ -1088,10 +1054,10 @@
     sprite.width = sprite.height = size;
     var ctx = sprite.getContext('2d');
     var gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    gradient.addColorStop(0, 'hsla(' + shade + ', 82%, 60%, 0.9)');
-    gradient.addColorStop(0.3, 'hsla(' + shade + ', 82%, 54%, 0.4)');
-    gradient.addColorStop(0.62, 'hsla(' + shade + ', 82%, 50%, 0.12)');
-    gradient.addColorStop(1, 'hsla(' + shade + ', 82%, 48%, 0)');
+    gradient.addColorStop(0, 'hsla(' + shade + ', 88%, 62%, 0.9)');
+    gradient.addColorStop(0.3, 'hsla(' + shade + ', 88%, 56%, 0.4)');
+    gradient.addColorStop(0.62, 'hsla(' + shade + ', 88%, 52%, 0.12)');
+    gradient.addColorStop(1, 'hsla(' + shade + ', 88%, 50%, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     inkSprites[key] = sprite;
@@ -1119,102 +1085,24 @@
   function stopSpill() {
     if (spillFrame) { cancelAnimationFrame(spillFrame); spillFrame = null; }
     spillDrops = [];
-    flowVX.fill(0); flowVY.fill(0); flowCurl.fill(0);
-    pointerWas.x = pointerWas.y = null;
     spillCtx.setTransform(1, 0, 0, 1, 0, 0);
     spillCtx.clearRect(0, 0, spillCanvas.width, spillCanvas.height);
     inkFrontCtx.clearRect(0, 0, inkFront.width, inkFront.height);
     inkBackCtx.clearRect(0, 0, inkBack.width, inkBack.height);
   }
 
-  /** Bilinear, so advection does not step in blocks. Returns into `out`, in
-   *  viewport pixels per frame. */
-  var flowOut = { x: 0, y: 0 };
-  function sampleFlow(px, py, out) {
-    var gx = px / window.innerWidth * (FLOW_COLS - 1);
-    var gy = py / window.innerHeight * (FLOW_ROWS - 1);
-    if (gx < 0) gx = 0; else if (gx > FLOW_COLS - 1) gx = FLOW_COLS - 1;
-    if (gy < 0) gy = 0; else if (gy > FLOW_ROWS - 1) gy = FLOW_ROWS - 1;
-    var x0 = gx | 0, y0 = gy | 0;
-    var x1 = x0 + 1 < FLOW_COLS ? x0 + 1 : x0;
-    var y1 = y0 + 1 < FLOW_ROWS ? y0 + 1 : y0;
-    var fx = gx - x0, fy = gy - y0;
-    var a = y0 * FLOW_COLS, b = y1 * FLOW_COLS;
-    var t00 = a + x0, t10 = a + x1, t01 = b + x0, t11 = b + x1;
-    var w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
-    out.x = flowVX[t00] * w00 + flowVX[t10] * w10 + flowVX[t01] * w01 + flowVX[t11] * w11;
-    out.y = flowVY[t00] * w00 + flowVY[t10] * w10 + flowVY[t01] * w01 + flowVY[t11] * w11;
+  /** Two sines across each axis, turning slowly. Not real curl noise, but it
+   *  shears the flow at every scale the eye checks, which is what stops the
+   *  cloud reading as one rigid mass being pushed around. */
+  function flowAt(x, y, t, out) {
+    out.x = Math.sin(y * 0.013 + t * 0.0011) + 0.55 * Math.sin(y * 0.029 - t * 0.0017);
+    out.y = Math.cos(x * 0.011 - t * 0.0009) + 0.55 * Math.cos(x * 0.025 + t * 0.0015);
   }
+  var flow = { x: 0, y: 0 };
 
-  /** Ambient stirring, plus the pointer shoving the fluid, plus the curl the
-   *  field would otherwise lose. */
-  function advanceFlow(now, step, pushX, pushY) {
-    var i, x, y;
-
-    for (i = 0; i < FLOW_CELLS; i++) {
-      flowVX[i] *= FLOW_DECAY;
-      flowVY[i] *= FLOW_DECAY;
-    }
-
-    // A slow sheared drift so the ink is never entirely still.
-    var t = now * 0.001;
-    for (y = 0; y < FLOW_ROWS; y++) {
-      for (x = 0; x < FLOW_COLS; x++) {
-        i = y * FLOW_COLS + x;
-        flowVX[i] += (Math.sin(y * 0.55 + t * 0.7) + 0.5 * Math.sin(y * 1.3 - t * 1.1)) * 0.012 * step;
-        flowVY[i] += (Math.cos(x * 0.5 - t * 0.6) + 0.5 * Math.cos(x * 1.15 + t * 0.9)) * 0.012 * step;
-      }
-    }
-
-    // 画面をなぞって墨を流す — the pointer does not attract the ink, it pushes it.
-    if (pushX || pushY) {
-      var cx = pointer.x / window.innerWidth * (FLOW_COLS - 1);
-      var cy = pointer.y / window.innerHeight * (FLOW_ROWS - 1);
-      var reach = SPLAT_CELLS;
-      var x0 = Math.max(0, Math.floor(cx - reach)), x1 = Math.min(FLOW_COLS - 1, Math.ceil(cx + reach));
-      var y0 = Math.max(0, Math.floor(cy - reach)), y1 = Math.min(FLOW_ROWS - 1, Math.ceil(cy + reach));
-      for (y = y0; y <= y1; y++) {
-        for (x = x0; x <= x1; x++) {
-          var dx = x - cx, dy = y - cy;
-          var falloff = Math.exp(-(dx * dx + dy * dy) / (reach * 0.55));
-          if (falloff < 0.01) continue;
-          i = y * FLOW_COLS + x;
-          flowVX[i] += pushX * SPLAT_FORCE * falloff;
-          flowVY[i] += pushY * SPLAT_FORCE * falloff;
-        }
-      }
-    }
-
-    // Vorticity confinement: find the curl, then push along the gradient of its
-    // magnitude so the eddies the coarse grid keeps losing are put back.
-    for (y = 1; y < FLOW_ROWS - 1; y++) {
-      for (x = 1; x < FLOW_COLS - 1; x++) {
-        i = y * FLOW_COLS + x;
-        flowCurl[i] = (flowVY[i + 1] - flowVY[i - 1]) * 0.5
-                    - (flowVX[i + FLOW_COLS] - flowVX[i - FLOW_COLS]) * 0.5;
-      }
-    }
-    for (y = 2; y < FLOW_ROWS - 2; y++) {
-      for (x = 2; x < FLOW_COLS - 2; x++) {
-        i = y * FLOW_COLS + x;
-        var gradX = Math.abs(flowCurl[i + 1]) - Math.abs(flowCurl[i - 1]);
-        var gradY = Math.abs(flowCurl[i + FLOW_COLS]) - Math.abs(flowCurl[i - FLOW_COLS]);
-        var len = Math.sqrt(gradX * gradX + gradY * gradY) + 1e-5;
-        var k = CURL_STRENGTH * flowCurl[i] * step / len;
-        flowVX[i] += gradY * k;
-        flowVY[i] -= gradX * k;
-      }
-    }
-
-    for (i = 0; i < FLOW_CELLS; i++) {
-      if (flowVX[i] > MAX_FLOW) flowVX[i] = MAX_FLOW; else if (flowVX[i] < -MAX_FLOW) flowVX[i] = -MAX_FLOW;
-      if (flowVY[i] > MAX_FLOW) flowVY[i] = MAX_FLOW; else if (flowVY[i] < -MAX_FLOW) flowVY[i] = -MAX_FLOW;
-    }
-  }
-
-  /** Thrown out of the sheet, then carried by the flow. Colour is the one thing
-   *  on the page that is not the sheet's ink — finishing a character is the
-   *  only moment the palette lets go. */
+  /** Thrown out of the sheet, then gathered around the pointer and kept
+   *  turning. Colour is the one thing on the page that is not the sheet's ink —
+   *  finishing a character is the only moment the palette lets go. */
   function spillInk() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     stopSpill();
@@ -1223,6 +1111,11 @@
     var box = sheet.getBoundingClientRect();
     var homeX = box.left + box.width / 2;
     var homeY = box.top + box.height / 2;
+
+    // Three related hues rather than a whole wheel: a plume of everything at
+    // once is a smear, a plume of three is ink.
+    var baseHue = Math.random() * 360;
+    var palette = [baseHue, (baseHue + 95) % 360, (baseHue + 205) % 360];
 
     for (var i = 0; i < SPILL_DROPS; i++) {
       var angle = Math.random() * Math.PI * 2;
@@ -1233,26 +1126,16 @@
         y: homeY + Math.sin(angle) * (box.height / 2) * fromEdge,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        hue: PIGMENTS[i % PIGMENTS.length] + (Math.random() - 0.5) * 22,
+        hue: palette[i % palette.length] + (Math.random() - 0.5) * 26,
         radius: 10 + Math.random() * 22,
         weight: 0.09 + Math.random() * 0.13,
-        drift: 0.7 + Math.random() * 1.1,
-        orbit: 24 + Math.random() * 62,
-        spin: (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.14),
+        drift: 0.5 + Math.random() * 1.3,
+        orbit: 18 + Math.random() * 70,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (0.1 + Math.random() * 0.18),
+        // Held back in waves, so the plume keeps unfurling instead of arriving
+        // all at once and then only fading.
         wakeAt: Math.random() * 900
       });
-    }
-
-    // The burst itself is a splat: the ink leaves the sheet with the water
-    // already moving outward around it.
-    for (var c = 0; c < FLOW_CELLS; c++) {
-      var gx = (c % FLOW_COLS) / (FLOW_COLS - 1) * window.innerWidth;
-      var gy = ((c / FLOW_COLS) | 0) / (FLOW_ROWS - 1) * window.innerHeight;
-      var ox = gx - homeX, oy = gy - homeY;
-      var dist = Math.sqrt(ox * ox + oy * oy) + 1e-3;
-      var push = Math.exp(-dist / 120) * 1.8;
-      flowVX[c] = ox / dist * push;
-      flowVY[c] = oy / dist * push;
     }
 
     var started = null;
@@ -1266,60 +1149,23 @@
       var step = Math.min(3, (now - previous) / 16.67);
       previous = now;
 
-      var washed = age > SPILL_LIFE * WASH_AT
-        ? (age - SPILL_LIFE * WASH_AT) / (SPILL_LIFE * (1 - WASH_AT))
-        : 0;
-
-      /* ── what the pointer has done since last frame ── */
-      var pushX = 0, pushY = 0;
-      if (pointer.x !== null) {
-        if (pointerWas.x !== null) {
-          pushX = pointer.x - pointerWas.x;
-          pushY = pointer.y - pointerWas.y;
-          var moved = Math.sqrt(pushX * pushX + pushY * pushY);
-          if (moved > 60) { pushX = pushX / moved * 60; pushY = pushY / moved * 60; }
-        }
-        pointerWas.x = pointer.x;
-        pointerWas.y = pointer.y;
-      }
-
-      advanceFlow(now, step, pushX, pushY);
-
       var toX = pointer.x === null ? homeX : pointer.x;
       var toY = pointer.y === null ? homeY : pointer.y;
       var flyingFree = age < SPILL_BURST;
+      var fade = age < SPILL_LIFE * 0.5
+        ? 1
+        : Math.max(0, 1 - (age - SPILL_LIFE * 0.5) / (SPILL_LIFE * 0.5));
 
       var bw = inkFront.width;
       var bh = inkFront.height;
 
-      /* ── advect the dye: every tile comes from where the flow says ── */
+      /* ── carry the volume forward: bigger, fainter ── */
       inkBackCtx.setTransform(1, 0, 0, 1, 0, 0);
       inkBackCtx.globalCompositeOperation = 'source-over';
       inkBackCtx.clearRect(0, 0, bw, bh);
-      inkBackCtx.globalAlpha = washed > 0 ? WASH_DECAY : DECAY;
-
-      var tileW = bw / TILE_COLS;
-      var tileH = bh / TILE_ROWS;
-      var maxStep = tileW * 0.6;
-      // The grid is shifted a random fraction of a tile every frame, so the
-      // seams between tiles never fall twice in the same place and average
-      // themselves out instead of etching lines into the dye.
-      var jitterX = (Math.random() - 0.5) * tileW;
-      var jitterY = (Math.random() - 0.5) * tileH;
-      for (var ty = -1; ty <= TILE_ROWS; ty++) {
-        for (var tx = -1; tx <= TILE_COLS; tx++) {
-          var dx0 = tx * tileW + jitterX;
-          var dy0 = ty * tileH + jitterY;
-          sampleFlow((dx0 + tileW / 2) / BUFFER_SCALE, (dy0 + tileH / 2) / BUFFER_SCALE, flowOut);
-          // Semi-Lagrangian: read from upstream, which is where this patch of
-          // water was a frame ago.
-          var offX = flowOut.x * ADVECT * BUFFER_SCALE * step;
-          var offY = flowOut.y * ADVECT * BUFFER_SCALE * step;
-          if (offX > maxStep) offX = maxStep; else if (offX < -maxStep) offX = -maxStep;
-          if (offY > maxStep) offY = maxStep; else if (offY < -maxStep) offY = -maxStep;
-          inkBackCtx.drawImage(inkFront, dx0 - offX, dy0 - offY, tileW, tileH,
-                                          dx0, dy0, tileW, tileH);
-        }
+      for (var tap = 0; tap < BLUR_TAPS.length; tap += 3) {
+        inkBackCtx.globalAlpha = DECAY * BLUR_TAPS[tap + 2];
+        inkBackCtx.drawImage(inkFront, BLUR_TAPS[tap], BLUR_TAPS[tap + 1]);
       }
       inkBackCtx.globalAlpha = 1;
 
@@ -1330,46 +1176,50 @@
         var drop = spillDrops[d];
         if (age < drop.wakeAt) continue;
 
-        sampleFlow(drop.x, drop.y, flowOut);
-        drop.vx += flowOut.x * drop.drift * 0.5 * step;
-        drop.vy += flowOut.y * drop.drift * 0.5 * step;
+        flowAt(drop.x, drop.y, now, flow);
+        drop.vx += flow.x * drop.drift * 0.06 * step;
+        drop.vy += flow.y * drop.drift * 0.06 * step;
 
         if (flyingFree) {
           drop.vx *= 0.975;
           drop.vy *= 0.975;
         } else {
-          // Still a gentle spring to a ring around the pointer, so the ink
-          // stays with it when the hand is still and the flow has died down.
-          var ax = toX - drop.x;
-          var ay = toY - drop.y;
-          var away = Math.sqrt(ax * ax + ay * ay) || 1;
-          var pull = (away - drop.orbit) * 0.0016;
-          drop.vx += (ax / away * pull - ay / away * drop.spin) * step;
-          drop.vy += (ay / away * pull + ax / away * drop.spin) * step;
-          drop.vx *= 0.96;
-          drop.vy *= 0.96;
+          // A spring toward a ring around the pointer rather than toward the
+          // pointer itself, plus a sideways push: together they orbit instead
+          // of piling up under the cursor.
+          var dx = toX - drop.x;
+          var dy = toY - drop.y;
+          var away = Math.sqrt(dx * dx + dy * dy) || 1;
+          var ux = dx / away;
+          var uy = dy / away;
+          var pull = (away - drop.orbit) * 0.0032;
+          drop.vx += (ux * pull - uy * drop.spin) * step;
+          drop.vy += (uy * pull + ux * drop.spin) * step;
+          drop.vx *= 0.955;
+          drop.vy *= 0.955;
         }
 
         drop.x += drop.vx * step;
         drop.y += drop.vy * step;
 
-        // Once it is being washed away, no more ink is laid down.
-        if (washed > 0.35) continue;
         var sprite = inkSprite(drop.hue);
         var r = drop.radius * BUFFER_SCALE;
-        inkBackCtx.globalAlpha = drop.weight * (1 - washed / 0.35);
+        inkBackCtx.globalAlpha = drop.weight;
         inkBackCtx.drawImage(sprite,
           drop.x * BUFFER_SCALE - r, drop.y * BUFFER_SCALE - r, r * 2, r * 2);
       }
 
       inkBackCtx.globalAlpha = 1;
 
+      // ping-pong
       var swapCanvas = inkFront; inkFront = inkBack; inkBack = swapCanvas;
       var swapCtx = inkFrontCtx; inkFrontCtx = inkBackCtx; inkBackCtx = swapCtx;
 
       /* ── up to the screen, one more pass of smoothing on the way ── */
       spillCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      spillCtx.globalAlpha = fade;
       spillCtx.drawImage(inkFront, 0, 0, window.innerWidth, window.innerHeight);
+      spillCtx.globalAlpha = 1;
 
       spillFrame = requestAnimationFrame(frame);
     });

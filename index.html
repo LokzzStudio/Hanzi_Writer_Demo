@@ -1030,11 +1030,19 @@
      itself. Working at part resolution and blitting up costs nothing and buys
      one more pass of smoothing, which is the opposite of the halftone dots. */
   var BUFFER_SCALE = 0.55;
-  /* Spreading is a five-tap blur, not a scale-up: scaling zooms the whole
-     buffer about its centre, which drags the ink bodily across the screen
-     instead of letting it bleed where it actually is. */
-  var BLUR_TAPS = [0, 0, 0.36,  1.3, 0, 0.16,  -1.3, 0, 0.16,  0, 1.3, 0.16,  0, -1.3, 0.16];
-  var DECAY = 0.973;         // what it gives up on the way
+  /* Dye is carried along the flow rather than blurred. Blur only ever moves
+     toward mush; transporting it stretches it into filaments, which is the
+     thing that reads as ink in water. Semi-Lagrangian at tile granularity —
+     each tile is redrawn from wherever the flow says it came from — after
+     suminagashi.miraicode.one, which does the same per pixel in a WebGL
+     Navier-Stokes solver. */
+  var ADVECT = 3;            // how hard the dye is dragged by the flow
+  var TILE_COLS = 24;
+  var TILE_ROWS = 14;
+  /* Without the blur there is no longer a stack of half-transparent layers
+     throwing dye away every frame, so this has to give up much more on its
+     own to land at the same density. */
+  var DECAY = 0.86;          // what it gives up on the way
   var HUE_STEPS = 24;        // ink sprites are cached per hue
 
   var inkFront = document.createElement('canvas');
@@ -1159,13 +1167,37 @@
       var bw = inkFront.width;
       var bh = inkFront.height;
 
-      /* ── carry the volume forward: bigger, fainter ── */
+      /* ── carry the volume forward: advected, and a little fainter ── */
       inkBackCtx.setTransform(1, 0, 0, 1, 0, 0);
       inkBackCtx.globalCompositeOperation = 'source-over';
       inkBackCtx.clearRect(0, 0, bw, bh);
-      for (var tap = 0; tap < BLUR_TAPS.length; tap += 3) {
-        inkBackCtx.globalAlpha = DECAY * BLUR_TAPS[tap + 2];
-        inkBackCtx.drawImage(inkFront, BLUR_TAPS[tap], BLUR_TAPS[tap + 1]);
+      inkBackCtx.globalAlpha = DECAY;
+
+      var tileW = bw / TILE_COLS;
+      var tileH = bh / TILE_ROWS;
+      var maxStep = tileW * 0.6;
+      // The grid is shifted a random fraction of a tile every frame, so the
+      // seams between tiles never fall twice in the same place and average
+      // themselves out rather than etching lines into the dye. That is what
+      // pays for dropping the blur that used to hide them.
+      var jitterX = (Math.random() - 0.5) * tileW;
+      var jitterY = (Math.random() - 0.5) * tileH;
+      for (var ty = -1; ty <= TILE_ROWS; ty++) {
+        for (var tx = -1; tx <= TILE_COLS; tx++) {
+          var dx0 = tx * tileW + jitterX;
+          var dy0 = ty * tileH + jitterY;
+          flowAt((dx0 + tileW / 2) / BUFFER_SCALE, (dy0 + tileH / 2) / BUFFER_SCALE, now, flow);
+          var offX = flow.x * ADVECT * BUFFER_SCALE * step;
+          var offY = flow.y * ADVECT * BUFFER_SCALE * step;
+          // A tile may not be dragged further than it is wide, or the dye is
+          // sampled from somewhere unrelated and the buffer shreds.
+          if (offX > maxStep) offX = maxStep; else if (offX < -maxStep) offX = -maxStep;
+          if (offY > maxStep) offY = maxStep; else if (offY < -maxStep) offY = -maxStep;
+          // Semi-Lagrangian: read from upstream, where this patch of water
+          // was a frame ago.
+          inkBackCtx.drawImage(inkFront, dx0 - offX, dy0 - offY, tileW, tileH,
+                                         dx0, dy0, tileW, tileH);
+        }
       }
       inkBackCtx.globalAlpha = 1;
 

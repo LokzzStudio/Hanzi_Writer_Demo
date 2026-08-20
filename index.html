@@ -294,6 +294,13 @@
   }
   .hint-finger .finger-fist { fill: #f2d2ab; }
 
+  .spill {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+  }
+
   /* ── Buttons ────────────────────────────────────────────── */
 
   /* Big, round and springy — the whole page is aimed at small hands. */
@@ -538,6 +545,10 @@
 
 </div>
 
+<!-- The ink a finished character lets out. Fixed to the viewport rather than
+     parented to the sheet, because it has to leave the sheet. -->
+<canvas id="spill" class="spill" aria-hidden="true"></canvas>
+
 <!-- Sound. Cloned on play so a clip can overlap its own tail. -->
 <audio id="sfx-brush"        src="sound/magic_scroll_sfx_brush_stroke.wav"      preload="auto"></audio>
 <audio id="sfx-correct"      src="sound/magic_scroll_sfx_correct_stroke.wav"    preload="auto"></audio>
@@ -578,6 +589,7 @@
   var characterList = document.getElementById('characters');
   var gridList = document.getElementById('grids');
   var themeList = document.getElementById('themes');
+  var sheet = document.querySelector('.sheet');
   var hintGroup = document.getElementById('hint-group');
   var hintFinger = document.getElementById('hint-finger');
   var fingerFrame = null;
@@ -990,6 +1002,259 @@
 
   /* ── Canvas ─────────────────────────────────────────────── */
 
+  /* ── Magical ink ────────────────────────────────────────── */
+
+  /** Where the swarm gathers. Null until the pointer has been somewhere, so a
+   *  touch screen that has never hovered still gets the ink, around the sheet
+   *  it came out of. */
+  var pointer = { x: null, y: null };
+  window.addEventListener('pointermove', function (event) {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+  }, { passive: true });
+
+  var spillCanvas = document.getElementById('spill');
+  var spillCtx = spillCanvas.getContext('2d');
+  var spillFrame = null;
+  var spillDrops = [];
+
+  var SPILL_LIFE = 5000;    // start to gone
+  var SPILL_BURST = 620;    // how long it flies free before it is drawn in
+  var SPILL_DROPS = 46;
+  var SPILL_TRAIL = 9;      // positions kept behind each drop, so it smears
+
+  /* The look is not drawn directly. Ink is massed into an offscreen FIELD as
+     overlapping soft blobs, and then that field is re-drawn as halftone dots
+     whose SIZE follows its density — solid where the mass is, breaking into
+     coarse dots at the edge, scattering to specks beyond it. Size carrying the
+     value rather than opacity is what makes it read as ink on paper instead of
+     as a cloud of glowing points. */
+  var FIELD_SCALE = 0.25;   // the field is coarse; the dots are the detail
+  var DOT_PITCH = 6;        // screen px between halftone centres
+  var DOT_SOLID = 0.92;     // field density at which dots merge into a mass
+  var DOT_FLOOR = 0.08;     // below this it is spatter, not halftone
+  var HUE_BUCKETS = 14;     // dots batched per hue, to keep the fill count low
+  var TAU = Math.PI * 2;
+
+  /** One soft blob, stamped many times per frame to build the field. Drawing a
+   *  sprite beats building a gradient per blob per frame. */
+  var blobSprite = (function () {
+    var size = 64;
+    var sprite = document.createElement('canvas');
+    sprite.width = sprite.height = size;
+    var ctx = sprite.getContext('2d');
+    var gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.16, 'rgba(255,255,255,0.88)');
+    gradient.addColorStop(0.38, 'rgba(255,255,255,0.34)');
+    gradient.addColorStop(0.66, 'rgba(255,255,255,0.11)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    return sprite;
+  })();
+
+  var field = document.createElement('canvas');
+  var fieldCtx = field.getContext('2d', { willReadFrequently: true });
+
+  /** Stable per-cell randomness, so spatter sits still in the world while the
+   *  ink drifts through it rather than fizzing every frame. */
+  function cellNoise(x, y) {
+    var v = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+    return (v % 10007) / 10007;
+  }
+
+  function sizeSpill() {
+    var dpr = window.devicePixelRatio || 1;
+    spillCanvas.width = Math.floor(window.innerWidth * dpr);
+    spillCanvas.height = Math.floor(window.innerHeight * dpr);
+    spillCanvas.style.width = window.innerWidth + 'px';
+    spillCanvas.style.height = window.innerHeight + 'px';
+    spillCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', function () { if (spillFrame) sizeSpill(); });
+
+  function stopSpill() {
+    if (spillFrame) { cancelAnimationFrame(spillFrame); spillFrame = null; }
+    spillDrops = [];
+    spillCtx.setTransform(1, 0, 0, 1, 0, 0);
+    spillCtx.clearRect(0, 0, spillCanvas.width, spillCanvas.height);
+  }
+
+  /** Thrown out of the sheet, then gathered around the pointer and kept
+   *  turning. Colour is the one thing on the page that is not the sheet's ink —
+   *  finishing a character is the only moment the palette lets go. */
+  function spillInk() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    stopSpill();
+    sizeSpill();
+
+    var box = sheet.getBoundingClientRect();
+    var homeX = box.left + box.width / 2;
+    var homeY = box.top + box.height / 2;
+    var firstHue = Math.random() * 360;
+
+    for (var i = 0; i < SPILL_DROPS; i++) {
+      var angle = (i / SPILL_DROPS) * TAU + Math.random() * 0.5;
+      var fromEdge = 0.5 + Math.random() * 0.5;
+      var speed = 4 + Math.random() * 5;
+      spillDrops.push({
+        x: homeX + Math.cos(angle) * (box.width / 2) * fromEdge,
+        y: homeY + Math.sin(angle) * (box.height / 2) * fromEdge,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        weight: 9 + Math.random() * 13,
+        orbit: 14 + Math.random() * 54,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (0.15 + Math.random() * 0.2),
+        trail: []
+      });
+    }
+
+    var started = null;
+    var previous = null;
+
+    spillFrame = requestAnimationFrame(function frame(now) {
+      if (started === null) { started = now; previous = now; }
+      var age = now - started;
+      if (age >= SPILL_LIFE) { stopSpill(); return; }
+
+      // Normalised to 60fps steps, and capped so a stalled tab does not resume
+      // by teleporting everything.
+      var step = Math.min(3, (now - previous) / 16.67);
+      previous = now;
+
+      var toX = pointer.x === null ? homeX : pointer.x;
+      var toY = pointer.y === null ? homeY : pointer.y;
+      var flyingFree = age < SPILL_BURST;
+      var fade = age < SPILL_LIFE * 0.55
+        ? 1
+        : Math.max(0, 1 - (age - SPILL_LIFE * 0.55) / (SPILL_LIFE * 0.45));
+
+      /* ── move ── */
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (var d = 0; d < spillDrops.length; d++) {
+        var drop = spillDrops[d];
+
+        if (flyingFree) {
+          drop.vx *= 0.98;
+          drop.vy *= 0.98;
+        } else {
+          // A spring toward a ring around the pointer rather than toward the
+          // pointer itself, plus a sideways push: together they orbit instead
+          // of piling up under the cursor.
+          var dx = toX - drop.x;
+          var dy = toY - drop.y;
+          var away = Math.sqrt(dx * dx + dy * dy) || 1;
+          var ux = dx / away;
+          var uy = dy / away;
+          var pull = (away - drop.orbit) * 0.0055;
+          drop.vx += (ux * pull - uy * drop.spin) * step;
+          drop.vy += (uy * pull + ux * drop.spin) * step;
+          drop.vx *= 0.93;
+          drop.vy *= 0.93;
+        }
+
+        drop.x += drop.vx * step;
+        drop.y += drop.vy * step;
+
+        drop.trail.push(drop.x, drop.y);
+        if (drop.trail.length > SPILL_TRAIL * 2) drop.trail.splice(0, 2);
+
+        if (drop.x < minX) minX = drop.x;
+        if (drop.x > maxX) maxX = drop.x;
+        if (drop.y < minY) minY = drop.y;
+        if (drop.y > maxY) maxY = drop.y;
+      }
+
+      /* ── mass it into the field ── */
+      var margin = 90;
+      minX = Math.max(0, Math.floor(minX - margin));
+      minY = Math.max(0, Math.floor(minY - margin));
+      maxX = Math.min(window.innerWidth, Math.ceil(maxX + margin));
+      maxY = Math.min(window.innerHeight, Math.ceil(maxY + margin));
+      var spanX = Math.max(1, maxX - minX);
+      var spanY = Math.max(1, maxY - minY);
+
+      var fw = Math.max(1, Math.ceil(spanX * FIELD_SCALE));
+      var fh = Math.max(1, Math.ceil(spanY * FIELD_SCALE));
+      if (field.width !== fw || field.height !== fh) { field.width = fw; field.height = fh; }
+      fieldCtx.clearRect(0, 0, fw, fh);
+      fieldCtx.globalCompositeOperation = 'lighter';
+
+      for (var e = 0; e < spillDrops.length; e++) {
+        var blob = spillDrops[e];
+        var points = blob.trail.length / 2;
+        for (var t = 0; t < points; t++) {
+          // Newer positions are fatter, so the smear tapers behind the head.
+          var along = (t + 1) / points;
+          var radius = blob.weight * (0.3 + 0.7 * along) * 2.0 * FIELD_SCALE;
+          var cx = (blob.trail[t * 2] - minX) * FIELD_SCALE;
+          var cy = (blob.trail[t * 2 + 1] - minY) * FIELD_SCALE;
+          fieldCtx.drawImage(blobSprite, cx - radius, cy - radius, radius * 2, radius * 2);
+        }
+      }
+
+      var density = fieldCtx.getImageData(0, 0, fw, fh).data;
+
+      /* ── re-draw it as halftone ── */
+      spillCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      spillCtx.globalAlpha = fade;
+
+      var buckets = [];
+      var hueDrift = age * 0.05 + firstHue;
+
+      for (var sy = 0; sy < spanY; sy += DOT_PITCH) {
+        var fy = (sy * FIELD_SCALE) | 0;
+        if (fy >= fh) break;
+        var rowStart = fy * fw;
+        for (var sx = 0; sx < spanX; sx += DOT_PITCH) {
+          var fx = (sx * FIELD_SCALE) | 0;
+          if (fx >= fw) break;
+          var a = density[(rowStart + fx) * 4 + 3] / 255;
+          if (a <= 0.005) continue;
+
+          var px = minX + sx;
+          var py = minY + sy;
+          var radiusDot;
+
+          if (a < DOT_FLOOR) {
+            // Beyond the halftone the ink has thrown specks, not dots.
+            var chance = cellNoise(px, py);
+            if (chance > a * 17) continue;
+            radiusDot = 0.45 + chance * 1.5;
+            px += (cellNoise(px + 7, py) - 0.5) * DOT_PITCH;
+            py += (cellNoise(px, py + 13) - 0.5) * DOT_PITCH;
+          } else {
+            var value = Math.min(1, (a - DOT_FLOOR) / (DOT_SOLID - DOT_FLOOR));
+            // Past DOT_SOLID the dots are wider than the pitch, so they close
+            // up and the halftone becomes a solid body.
+            radiusDot = DOT_PITCH * 0.66 * Math.pow(value, 0.85);
+          }
+
+          var hue = (hueDrift + (px + py) * 0.13) % 360;
+          var bucket = (hue / 360 * HUE_BUCKETS) | 0;
+          var list = buckets[bucket] || (buckets[bucket] = []);
+          list.push(px, py, radiusDot);
+        }
+      }
+
+      for (var b = 0; b < HUE_BUCKETS; b++) {
+        var dots = buckets[b];
+        if (!dots || !dots.length) continue;
+        spillCtx.fillStyle = 'hsl(' + Math.round((b + 0.5) * (360 / HUE_BUCKETS)) + ', 90%, 58%)';
+        spillCtx.beginPath();
+        for (var k = 0; k < dots.length; k += 3) {
+          spillCtx.moveTo(dots[k] + dots[k + 2], dots[k + 1]);
+          spillCtx.arc(dots[k], dots[k + 1], dots[k + 2], 0, TAU);
+        }
+        spillCtx.fill();
+      }
+
+      spillCtx.globalAlpha = 1;
+      spillFrame = requestAnimationFrame(frame);
+    });
+  }
+
   /** hanzi-writer sizes the canvas in CSS pixels, so the proxy inflates the
    *  backing store by DPR and pre-scales the context to keep strokes crisp. */
   function createRetinaCanvasProxy(target, scale) {
@@ -1022,6 +1287,7 @@
     charData = null;
     hideHint();
     hideFinger();
+    stopSpill();
     loadError.classList.remove('shown');
 
     if (writer) {
@@ -1140,6 +1406,7 @@
         quizActive = false;
         hideHint();
         play('sfx-correct-word');
+        spillInk();
       }
     });
   }
